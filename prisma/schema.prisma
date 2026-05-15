@@ -1,0 +1,45 @@
+// demo-api — v2-admin parity (Postgres + file fallback via store).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Single-tenant row: full `SalonxV2AdminConfig` JSON.
+model SalonxBuildConfig {
+  id        String   @id @default("default")
+  payload   Json
+  updatedAt DateTime @updatedAt
+  webProjectionAt DateTime @default(now())
+  publishedPayload Json?
+}
+
+/// Calendar appointments (`/api/appointments`).
+model SalonxAppointment {
+  id         String   @id @default(cuid())
+  clientName String
+  service    String   @default("")
+  startAt    DateTime
+  endAt      DateTime
+  color      String   @default("#3b82f6")
+  price      Float    @default(0)
+  notes      String   @default("")
+  seriesId   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([startAt])
+  @@index([endAt])
+}
+
+/// Parked + waitlist toolbar rows for salonx-web-v2 (`/api/calendar-toolbar`).
+model SalonxCalendarToolbar {
+  id              String   @id @default("default")
+  parkedFromDrag  Json
+  toolbarEvents   Json
+  updatedAt       DateTime @updatedAt
+}

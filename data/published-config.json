@@ -1,0 +1,89 @@
+{
+  "version": 2,
+  "activeBrandId": "default",
+  "brands": [
+    {
+      "id": "default",
+      "name": "Default",
+      "primaryHex": "#3b82f6",
+      "s1Demo": {
+        "images": {
+          "topBar": "",
+          "hero": "",
+          "promo": "",
+          "curveStrip": ""
+        },
+        "adjust": {
+          "topBar": {
+            "scale": 1,
+            "rotate": 0,
+            "tx": 0,
+            "ty": 0,
+            "fit": "contain"
+          },
+          "hero": {
+            "scale": 1,
+            "rotate": 0,
+            "tx": 0,
+            "ty": 0,
+            "fit": "contain"
+          },
+          "promo": {
+            "scale": 1,
+            "rotate": 0,
+            "tx": 0,
+            "ty": 0,
+            "fit": "contain"
+          },
+          "curveStrip": {
+            "scale": 1,
+            "rotate": 0,
+            "tx": 0,
+            "ty": 0,
+            "fit": "contain"
+          }
+        },
+        "mediaKinds": {}
+      },
+      "s2": {
+        "image": "",
+        "adjust": {
+          "scale": 1,
+          "rotate": 0,
+          "tx": 0,
+          "ty": 0,
+          "fit": "contain"
+        },
+        "mediaKind": "image"
+      },
+      "s4": {
+        "image": "",
+        "adjust": {
+          "scale": 1,
+          "rotate": 0,
+          "tx": 0,
+          "ty": 0,
+          "fit": "contain"
+        },
+        "mediaKind": "image"
+      },
+      "s5": {
+        "image": "",
+        "adjust": {
+          "scale": 1,
+          "rotate": 0,
+          "tx": 0,
+          "ty": 0,
+          "fit": "contain"
+        },
+        "mediaKind": "image"
+      },
+      "screenLocks": {
+        "s1": false,
+        "s2": false,
+        "s4": false,
+        "s5": false
+      }
+    }
+  ]
+}

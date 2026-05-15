@@ -1,0 +1,180 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-demo-api-salonx",
+    "name": "Salon X — demo-api",
+    "description": "Express + Prisma + Postgres + Socket.IO (Build Station / salonx-web-v2 parity).\n\nSet collection variable `baseUrl` (default `http://localhost:4000`).\n\n**Socket.IO** (not in Postman): `appointment:created` | `appointment:updated` | `appointment:deleted` | `config:updated`\n\n**SSE**: open `GET {{baseUrl}}/api/config/stream` in a browser or `curl -N` — Postman’s response UI is poor for streams.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000" },
+    { "key": "appointmentId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config",
+      "item": [
+        {
+          "name": "GET config (admin draft)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/config"
+          }
+        },
+        {
+          "name": "GET config forWeb (published)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/config?forWeb=1"
+          }
+        },
+        {
+          "name": "GET config forWeb + If-None-Match (304)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "If-None-Match", "value": "\"sx-replace-with-etag-from-prev-response\"", "type": "text" }],
+            "url": "{{baseUrl}}/api/config?forWeb=1"
+          }
+        },
+        {
+          "name": "PATCH config (theme + publish)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"primaryHex\": \"#3b82f6\",\n  \"publishToApp\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/config"
+          }
+        },
+        {
+          "name": "PATCH config (add brand)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addBrand\": { \"name\": \"From Postman\" },\n  \"publishToApp\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/config"
+          }
+        },
+        {
+          "name": "GET config stream (SSE) — use curl/browser",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "text/event-stream" }],
+            "url": "{{baseUrl}}/api/config/stream?forWeb=1",
+            "description": "Long-lived SSE. Example: `curl -N '{{baseUrl}}/api/config/stream?forWeb=1'`"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Upload",
+      "item": [
+        {
+          "name": "POST upload (multipart file)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "Pick an image or small video"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/upload"
+          }
+        },
+        {
+          "name": "POST upload sign (Cloudinary)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"image\"\n}"
+            },
+            "url": "{{baseUrl}}/api/upload/sign",
+            "description": "503 if Cloudinary env vars not set on demo-api."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "item": [
+        {
+          "name": "GET appointments (range)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/appointments?from=2026-01-01T00:00:00.000Z&to=2026-12-31T23:59:59.999Z",
+            "description": "503 if DATABASE_URL not configured. Omit query for default last-365-days window."
+          }
+        },
+        {
+          "name": "POST appointment (create)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientName\": \"Postman Client\",\n  \"service\": \"Cut & color\",\n  \"start\": \"2026-06-01T14:00:00.000Z\",\n  \"end\": \"2026-06-01T15:00:00.000Z\",\n  \"color\": \"#ec4899\",\n  \"price\": 85,\n  \"notes\": \"Created from Postman\"\n}"
+            },
+            "url": "{{baseUrl}}/api/appointments"
+          }
+        },
+        {
+          "name": "GET appointment by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/appointments/{{appointmentId}}"
+          }
+        },
+        {
+          "name": "PATCH appointment",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Updated from Postman\",\n  \"price\": 90\n}"
+            },
+            "url": "{{baseUrl}}/api/appointments/{{appointmentId}}"
+          }
+        },
+        {
+          "name": "DELETE appointment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/appointments/{{appointmentId}}"
+          }
+        }
+      ]
+    }
+  ]
+}
