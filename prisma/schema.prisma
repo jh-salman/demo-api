@@ -43,3 +43,17 @@ model SalonxCalendarToolbar {
   toolbarEvents   Json
   updatedAt       DateTime @updatedAt
 }
+
+/// Client picker list (`/api/clients`).
+model SalonxClientCatalog {
+  id        String   @id @default("default")
+  items     Json
+  updatedAt DateTime @updatedAt
+}
+
+/// Service picker list (`/api/service-catalog`).
+model SalonxServiceCatalog {
+  id        String   @id @default("default")
+  items     Json
+  updatedAt DateTime @updatedAt
+}

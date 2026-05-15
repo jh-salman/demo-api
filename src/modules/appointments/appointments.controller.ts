@@ -137,7 +137,9 @@ export const appointmentsController = {
       typeof req.query.to === "string" ? req.query.to : undefined,
     );
     if ("error" in range) throw new HttpError(400, range.error);
-    const list = await appointmentsService.listOverlapping(range.from, range.to);
+    const limitRaw = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 2000;
+    const limit = Number.isFinite(limitRaw) ? limitRaw : 2000;
+    const list = await appointmentsService.listOverlapping(range.from, range.to, limit);
     if (list === null) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);

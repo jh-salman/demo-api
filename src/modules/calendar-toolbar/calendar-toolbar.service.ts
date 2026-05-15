@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { getPrisma } from "../../lib/prisma.js";
+import { JsonRowConflictError } from "../../lib/json-row-store.js";
 
 const MAX_ITEMS = 500;
 
@@ -34,10 +35,30 @@ async function getToolbarState() {
   };
 }
 
-async function putToolbarState(parkedFromDrag: unknown, toolbarEvents: unknown) {
+async function putToolbarState(
+  parkedFromDrag: unknown,
+  toolbarEvents: unknown,
+  expectedUpdatedAt?: string | null,
+) {
   const prisma = getPrisma();
   if (!prisma) {
     throw new Error("DATABASE_URL not configured");
+  }
+  const expected = expectedUpdatedAt?.trim();
+  if (expected) {
+    const existing = await prisma.salonxCalendarToolbar.findUnique({
+      where: { id: "default" },
+    });
+    if (existing && existing.updatedAt.toISOString() !== expected) {
+      throw new JsonRowConflictError({
+        stored: true,
+        items: [
+          existing.parkedFromDrag as unknown[],
+          existing.toolbarEvents as unknown[],
+        ],
+        updatedAt: existing.updatedAt.toISOString(),
+      });
+    }
   }
   const p = asJsonArray(parkedFromDrag) as Prisma.InputJsonValue;
   const t = asJsonArray(toolbarEvents) as Prisma.InputJsonValue;

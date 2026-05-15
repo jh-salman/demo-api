@@ -2,15 +2,16 @@ import { getPrismaOrNull, toDto } from "../../lib/appointments-api.js";
 import type { CreateAppointmentInput } from "./appointments.types.js";
 
 export const appointmentsService = {
-  async listOverlapping(from: Date, to: Date) {
+  async listOverlapping(from: Date, to: Date, limit = 2000) {
     const prisma = getPrismaOrNull();
     if (!prisma) return null;
+    const take = Math.min(Math.max(limit, 1), 5000);
     const rows = await prisma.salonxAppointment.findMany({
       where: {
         AND: [{ startAt: { lt: to } }, { endAt: { gt: from } }],
       },
       orderBy: { startAt: "asc" },
-      take: 2000,
+      take,
     });
     return rows.map(toDto);
   },

@@ -2,13 +2,12 @@ import type { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
 import { JsonRowConflictError } from "../../lib/json-row-store.js";
-import { calendarToolbarService } from "./calendar-toolbar.service.js";
-import { emitCalendarToolbarUpdated } from "../../realtime/io.js";
+import { clientsService } from "./clients.service.js";
+import { emitClientsCatalogUpdated } from "../../realtime/io.js";
 
-export const calendarToolbarController = {
+export const clientsController = {
   get: asyncHandler(async (_req: Request, res: Response) => {
-    const body = await calendarToolbarService.get();
-    res.json(body);
+    res.json(await clientsService.get());
   }),
 
   put: asyncHandler(async (req: Request, res: Response) => {
@@ -18,22 +17,15 @@ export const calendarToolbarController = {
     }
     const b = body as Record<string, unknown>;
     try {
-      const next = await calendarToolbarService.put(
-        b.parkedFromDrag,
-        b.toolbarEvents,
+      const next = await clientsService.put(
+        b.clients,
         typeof b.expectedUpdatedAt === "string" ? b.expectedUpdatedAt : null,
       );
-      emitCalendarToolbarUpdated({
-        stored: next.stored,
-        parkedFromDrag: next.parkedFromDrag,
-        toolbarEvents: next.toolbarEvents,
-        ...(next.stored && "updatedAt" in next ? { updatedAt: next.updatedAt } : {}),
-      });
+      emitClientsCatalogUpdated(next);
       res.json(next);
     } catch (e) {
       if (e instanceof JsonRowConflictError) {
-        const current = await calendarToolbarService.get();
-        res.status(409).json({ error: e.message, ...current });
+        res.status(409).json({ error: e.message, ...e.current, clients: e.current.items });
         return;
       }
       const msg = e instanceof Error ? e.message : "Save failed";

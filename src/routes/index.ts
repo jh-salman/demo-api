@@ -7,6 +7,8 @@ import { configRouter } from "../modules/config/config.routes.js";
 import { uploadRouter } from "../modules/upload/upload.routes.js";
 import { uploadSignRouter } from "../modules/upload-sign/upload-sign.routes.js";
 import { calendarToolbarRouter } from "../modules/calendar-toolbar/calendar-toolbar.routes.js";
+import { clientsRouter } from "../modules/clients/clients.routes.js";
+import { serviceCatalogRouter } from "../modules/service-catalog/service-catalog.routes.js";
 
 export function registerRoutes(app: Express) {
   app.use("/health", healthRouter);
@@ -18,5 +20,7 @@ export function registerRoutes(app: Express) {
   app.use("/api/upload/sign", uploadSignRouter);
   app.use("/api/upload", uploadRouter);
   app.use("/api/calendar-toolbar", calendarToolbarRouter);
+  app.use("/api/clients", clientsRouter);
+  app.use("/api/service-catalog", serviceCatalogRouter);
   app.use("/api/appointments", appointmentsRouter);
 }
