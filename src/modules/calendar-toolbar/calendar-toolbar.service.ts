@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { getPrisma } from "../../lib/prisma.js";
 
 const MAX_ITEMS = 500;
@@ -38,8 +39,8 @@ async function putToolbarState(parkedFromDrag: unknown, toolbarEvents: unknown) 
   if (!prisma) {
     throw new Error("DATABASE_URL not configured");
   }
-  const p = asJsonArray(parkedFromDrag);
-  const t = asJsonArray(toolbarEvents);
+  const p = asJsonArray(parkedFromDrag) as Prisma.InputJsonValue;
+  const t = asJsonArray(toolbarEvents) as Prisma.InputJsonValue;
   await prisma.salonxCalendarToolbar.upsert({
     where: { id: "default" },
     create: {
