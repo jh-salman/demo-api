@@ -1,0 +1,278 @@
+/** Default product catalog — from salonx-web-v2 mockProducts. */
+export const DEFAULT_PRODUCTS = [
+  {
+    "id": "oribe_gold_lust_oil",
+    "brand": "ORIBE",
+    "name": "Gold Lust Nourishing Oil",
+    "shortName": "Gold Lust\nNourishing Oil",
+    "price": 56,
+    "stationTag": "BACK BAR",
+    "abbr": "ORI",
+    "color": "#1a1612",
+    "imageUrl": "https://www.oribe.com/cdn/shop/products/1200Wx1200H-400270.jpg?v=1691604240"
+  },
+  {
+    "id": "oribe_dry_texturizing",
+    "brand": "ORIBE",
+    "name": "Dry Texturizing Spray",
+    "shortName": "Dry Texturizing\nSpray",
+    "price": 49,
+    "stationTag": "ON STATION",
+    "abbr": "ORI",
+    "color": "#1a1612",
+    "imageUrl": "https://www.oribe.com/cdn/shop/files/400129-0.jpg?v=1752671764"
+  },
+  {
+    "id": "oribe_royal_blowout",
+    "brand": "ORIBE",
+    "name": "Royal Blowout Heat Styling Spray",
+    "shortName": "Royal Blowout\nHeat Styling Spray",
+    "price": 69,
+    "stationTag": "ON STATION",
+    "abbr": "ORI",
+    "color": "#1a1612",
+    "imageUrl": "https://www.oribe.com/cdn/shop/products/1200Wx1200H-400394_faff1d78-107c-4aa0-83a6-85fff320041f.jpg?v=1691604366"
+  },
+  {
+    "id": "rplusco_dallas_thickening",
+    "brand": "R+Co",
+    "name": "Dallas Thickening Conditioner",
+    "shortName": "Dallas Thickening\nConditioner",
+    "price": 36,
+    "stationTag": "BACK BAR",
+    "abbr": "R+C",
+    "color": "#1e1020",
+    "imageUrl": "https://www.randco.com/cdn/shop/products/DALLAS_Conditioner_8-5oz_FRONT.jpg"
+  },
+  {
+    "id": "rplusco_death_valley",
+    "brand": "R+Co",
+    "name": "Death Valley Dry Shampoo",
+    "shortName": "Death Valley\nDry Shampoo",
+    "price": 36,
+    "stationTag": "ON STATION",
+    "abbr": "R+C",
+    "color": "#1e1020",
+    "imageUrl": "https://www.randco.com/cdn/shop/products/DEATH_VALLEY_DryShampoo_3-5oz_FRONT.jpg"
+  },
+  {
+    "id": "rplusco_rockaway_salt",
+    "brand": "R+Co",
+    "name": "Rockaway Salt Spray",
+    "shortName": "Rockaway Salt\nSpray",
+    "price": 32,
+    "stationTag": "ON STATION",
+    "abbr": "R+C",
+    "color": "#1e1020",
+    "imageUrl": "https://www.randco.com/cdn/shop/products/ROCKAWAY_SaltSpray_4oz_FRONT.jpg"
+  },
+  {
+    "id": "rplusco_television",
+    "brand": "R+Co",
+    "name": "Television Perfect Hair Shampoo",
+    "shortName": "Television Perfect\nHair Shampoo",
+    "price": 32,
+    "stationTag": "BACK BAR",
+    "abbr": "R+C",
+    "color": "#1e1020",
+    "imageUrl": "https://www.randco.com/cdn/shop/products/TELEVISION_Shampoo_8-5oz_FRONT.jpg"
+  },
+  {
+    "id": "davines_oi_all_in_one",
+    "brand": "davines",
+    "name": "OI All In One Milk",
+    "shortName": "OI All In\nOne Milk",
+    "price": 44,
+    "stationTag": "ON STATION",
+    "abbr": "DAV",
+    "color": "#1e1a0e",
+    "imageUrl": "https://www.sephora.com/productimages/sku/s2817096-main-zoom.jpg"
+  },
+  {
+    "id": "davines_oi_hair_butter",
+    "brand": "davines",
+    "name": "OI Hair Butter",
+    "shortName": "OI Hair\nButter",
+    "price": 50,
+    "stationTag": "ON STATION",
+    "abbr": "DAV",
+    "color": "#1e1a0e",
+    "imageUrl": "https://www.sephora.com/productimages/sku/s2816999-main-zoom.jpg"
+  },
+  {
+    "id": "davines_naturaltech",
+    "brand": "davines",
+    "name": "Naturaltech Replumping Serum",
+    "shortName": "Naturaltech\nReplumping Serum",
+    "price": 68,
+    "stationTag": "BACK BAR",
+    "abbr": "DAV",
+    "color": "#1e1a0e",
+    "imageUrl": "https://www.sephora.com/productimages/sku/s2817278-main-zoom.jpg"
+  },
+  {
+    "id": "km_killer_curls",
+    "brand": "KEVIN.MURPHY",
+    "name": "Killer.Curls Wash",
+    "shortName": "Killer.Curls\nWash",
+    "price": 38,
+    "stationTag": "BACK BAR",
+    "abbr": "KM",
+    "color": "#141e14",
+    "imageUrl": "https://kevinmurphy.com.au/on/demandware.static/-/Sites-km_b2c_master/default/images/large/KILLER.CURLS-WASH_250mL.jpg"
+  },
+  {
+    "id": "km_hydrate_me_rinse",
+    "brand": "KEVIN.MURPHY",
+    "name": "Hydrate-Me.Rinse",
+    "shortName": "Hydrate-Me\nRinse",
+    "price": 38,
+    "stationTag": "BACK BAR",
+    "abbr": "KM",
+    "color": "#141e14",
+    "imageUrl": "https://kevinmurphy.com.au/on/demandware.static/-/Sites-km_b2c_master/default/images/large/HYDRATE-ME.RINSE_250mL.jpg"
+  },
+  {
+    "id": "km_undo_volume",
+    "brand": "KEVIN.MURPHY",
+    "name": "Undo Volume Spray",
+    "shortName": "Undo Volume\nSpray",
+    "price": 37,
+    "stationTag": "ON STATION",
+    "abbr": "KM",
+    "color": "#141e14",
+    "imageUrl": "https://kevinmurphy.com.au/on/demandware.static/-/Sites-km_b2c_master/default/images/large/UNDO.VOLUME_150mL.jpg"
+  },
+  {
+    "id": "km_session_spray",
+    "brand": "KEVIN.MURPHY",
+    "name": "Session.Spray Flex",
+    "shortName": "Session.Spray\nFlex",
+    "price": 34,
+    "stationTag": "ON STATION",
+    "abbr": "KM",
+    "color": "#141e14",
+    "imageUrl": "https://kevinmurphy.com.au/on/demandware.static/-/Sites-km_b2c_master/default/images/large/SESSION.SPRAY-FLEX_400mL.jpg"
+  },
+  {
+    "id": "km_plumping_wash",
+    "brand": "KEVIN.MURPHY",
+    "name": "Plumping Wash",
+    "shortName": "Plumping\nWash",
+    "price": 38,
+    "stationTag": "BACK BAR",
+    "abbr": "KM",
+    "color": "#141e14",
+    "imageUrl": "https://kevinmurphy.com.au/on/demandware.static/-/Sites-km_b2c_master/default/images/large/PLUMPING.WASH_250mL.jpg"
+  },
+  {
+    "id": "virtue_healing_shampoo",
+    "brand": "VIRTUE",
+    "name": "Healing Shampoo",
+    "shortName": "Healing\nShampoo",
+    "price": 42,
+    "stationTag": "BACK BAR",
+    "abbr": "VRT",
+    "color": "#18181c",
+    "imageUrl": "https://www.sephora.com/productimages/sku/s2234006-main-zoom.jpg"
+  },
+  {
+    "id": "virtue_healing_cond",
+    "brand": "VIRTUE",
+    "name": "Healing Conditioner",
+    "shortName": "Healing\nConditioner",
+    "price": 42,
+    "stationTag": "BACK BAR",
+    "abbr": "VRT",
+    "color": "#18181c",
+    "imageUrl": "https://www.sephora.com/productimages/sku/s2234014-main-zoom.jpg"
+  },
+  {
+    "id": "virtue_6in1_styler",
+    "brand": "VIRTUE",
+    "name": "6-in-1 Styler",
+    "shortName": "6-in-1\nStyler",
+    "price": 40,
+    "stationTag": "ON STATION",
+    "abbr": "VRT",
+    "color": "#18181c",
+    "imageUrl": "https://www.sephora.com/productimages/sku/s2233990-main-zoom.jpg"
+  },
+  {
+    "id": "virtue_full_shampoo",
+    "brand": "VIRTUE",
+    "name": "Full Shampoo For Thick Hair",
+    "shortName": "Full Shampoo\nFor Thick Hair",
+    "price": 42,
+    "stationTag": "BACK BAR",
+    "abbr": "VRT",
+    "color": "#18181c",
+    "imageUrl": "https://www.sephora.com/productimages/sku/s2234048-main-zoom.jpg"
+  },
+  {
+    "id": "virtue_creme_rinse",
+    "brand": "VIRTUE",
+    "name": "Crème Rinse",
+    "shortName": "Crème\nRinse",
+    "price": 42,
+    "stationTag": "BACK BAR",
+    "abbr": "VRT",
+    "color": "#18181c",
+    "imageUrl": "https://www.sephora.com/productimages/sku/s2234022-main-zoom.jpg"
+  },
+  {
+    "id": "olaplex_no4",
+    "brand": "OLAPLEX",
+    "name": "No.4 Bond Maintenance Shampoo",
+    "shortName": "No.4 Bond Maintenance\nShampoo",
+    "price": 30,
+    "stationTag": "BACK BAR",
+    "abbr": "OLX",
+    "color": "#1a1a24",
+    "imageUrl": "https://media.ulta.com/i/ulta/2591015?w=600&h=600&fmt=auto"
+  },
+  {
+    "id": "olaplex_no5",
+    "brand": "OLAPLEX",
+    "name": "No.5 Bond Maintenance Conditioner",
+    "shortName": "No.5 Bond Maintenance\nConditioner",
+    "price": 30,
+    "stationTag": "BACK BAR",
+    "abbr": "OLX",
+    "color": "#1a1a24",
+    "imageUrl": "https://media.ulta.com/i/ulta/2591016?w=600&h=600&fmt=auto"
+  },
+  {
+    "id": "olaplex_no7",
+    "brand": "OLAPLEX",
+    "name": "No.7 Bonding Oil",
+    "shortName": "No.7\nBonding Oil",
+    "price": 30,
+    "stationTag": "ON STATION",
+    "abbr": "OLX",
+    "color": "#1a1a24",
+    "imageUrl": "https://media.ulta.com/i/ulta/2591018?w=600&h=600&fmt=auto"
+  },
+  {
+    "id": "olaplex_no6",
+    "brand": "OLAPLEX",
+    "name": "No.6 Bond Smoother",
+    "shortName": "No.6\nBond Smoother",
+    "price": 30,
+    "stationTag": "ON STATION",
+    "abbr": "OLX",
+    "color": "#1a1a24",
+    "imageUrl": "https://media.ulta.com/i/ulta/2592990?w=600&h=600&fmt=auto"
+  },
+  {
+    "id": "olaplex_no9",
+    "brand": "OLAPLEX",
+    "name": "No.9 Bond Protector Nourishing Hair Serum",
+    "shortName": "No.9 Bond Protector\nNourishing Hair Serum",
+    "price": 30,
+    "stationTag": "BACK BAR",
+    "abbr": "OLX",
+    "color": "#1a1a24",
+    "imageUrl": "https://media.ulta.com/i/ulta/2596420?w=600&h=600&fmt=auto"
+  }
+] as const;

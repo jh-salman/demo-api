@@ -1,3 +1,4 @@
+import { ensureDefaultClientCatalog } from "../../lib/ensure-default-catalog.js";
 import { getPrisma } from "../../lib/prisma.js";
 import { createJsonRowStore } from "../../lib/json-row-store.js";
 
@@ -11,6 +12,7 @@ export const clientsService = {
   get: async () => {
     const s = store();
     if (!s) return { stored: false as const, clients: [] as unknown[] };
+    await ensureDefaultClientCatalog();
     const row = await s.get();
     return {
       stored: row.stored,

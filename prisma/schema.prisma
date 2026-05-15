@@ -57,3 +57,24 @@ model SalonxServiceCatalog {
   items     Json
   updatedAt DateTime @updatedAt
 }
+
+/// Per-client consultation notes + LOOK photos (`/api/client-consultation/:clientKey`).
+model SalonxClientConsultation {
+  clientKey String   @id
+  payload   Json
+  updatedAt DateTime @updatedAt
+}
+
+/// Per-appointment checkout queue + rates (`/api/appointment-visit/:appointmentId`).
+model SalonxAppointmentVisit {
+  appointmentId String   @id
+  payload       Json
+  updatedAt     DateTime @updatedAt
+}
+
+/// Product picker list (`/api/product-catalog`).
+model SalonxProductCatalog {
+  id        String   @id @default("default")
+  items     Json
+  updatedAt DateTime @updatedAt
+}

@@ -9,6 +9,9 @@ import { uploadSignRouter } from "../modules/upload-sign/upload-sign.routes.js";
 import { calendarToolbarRouter } from "../modules/calendar-toolbar/calendar-toolbar.routes.js";
 import { clientsRouter } from "../modules/clients/clients.routes.js";
 import { serviceCatalogRouter } from "../modules/service-catalog/service-catalog.routes.js";
+import { clientConsultationRouter } from "../modules/client-consultation/client-consultation.routes.js";
+import { appointmentVisitRouter } from "../modules/appointment-visit/appointment-visit.routes.js";
+import { productCatalogRouter } from "../modules/product-catalog/product-catalog.routes.js";
 
 export function registerRoutes(app: Express) {
   app.use("/health", healthRouter);
@@ -22,5 +25,8 @@ export function registerRoutes(app: Express) {
   app.use("/api/calendar-toolbar", calendarToolbarRouter);
   app.use("/api/clients", clientsRouter);
   app.use("/api/service-catalog", serviceCatalogRouter);
+  app.use("/api/product-catalog", productCatalogRouter);
+  app.use("/api/client-consultation", clientConsultationRouter);
+  app.use("/api/appointment-visit", appointmentVisitRouter);
   app.use("/api/appointments", appointmentsRouter);
 }

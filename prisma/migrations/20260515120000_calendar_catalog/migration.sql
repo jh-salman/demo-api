@@ -1,6 +1,6 @@
 -- Calendar client + service catalog (salonx-web-v2 picker lists).
 CREATE TABLE "SalonxClientCatalog" (
-    "id" TEXT NOT NULL,
+    "id" TEXT NOT NULL DEFAULT 'default',
     "items" JSONB NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -8,7 +8,7 @@ CREATE TABLE "SalonxClientCatalog" (
 );
 
 CREATE TABLE "SalonxServiceCatalog" (
-    "id" TEXT NOT NULL,
+    "id" TEXT NOT NULL DEFAULT 'default',
     "items" JSONB NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 

@@ -12,6 +12,9 @@ export const RealtimeEvents = {
   CALENDAR_TOOLBAR_UPDATED: "calendar-toolbar:updated",
   CLIENTS_CATALOG_UPDATED: "clients-catalog:updated",
   SERVICE_CATALOG_UPDATED: "service-catalog:updated",
+  CONSULTATION_UPDATED: "consultation:updated",
+  APPOINTMENT_VISIT_UPDATED: "appointment-visit:updated",
+  PRODUCT_CATALOG_UPDATED: "product-catalog:updated",
 } as const;
 
 export function setIo(server: Server) {
@@ -66,4 +69,30 @@ export function emitServiceCatalogUpdated(payload: {
   updatedAt?: string;
 }) {
   io?.emit(RealtimeEvents.SERVICE_CATALOG_UPDATED, payload);
+}
+
+export function emitConsultationUpdated(payload: {
+  stored: boolean;
+  clientKey: string;
+  record: unknown;
+  updatedAt?: string;
+}) {
+  io?.emit(RealtimeEvents.CONSULTATION_UPDATED, payload);
+}
+
+export function emitAppointmentVisitUpdated(payload: {
+  stored: boolean;
+  appointmentId: string;
+  visit: unknown;
+  updatedAt?: string;
+}) {
+  io?.emit(RealtimeEvents.APPOINTMENT_VISIT_UPDATED, payload);
+}
+
+export function emitProductCatalogUpdated(payload: {
+  stored: boolean;
+  products: unknown;
+  updatedAt?: string;
+}) {
+  io?.emit(RealtimeEvents.PRODUCT_CATALOG_UPDATED, payload);
 }
