@@ -1,0 +1,10 @@
+# Use when this folder is the Git repo root (e.g. github.com/jh-salman/demo-api).
+services:
+  - type: web
+    name: demo-api
+    runtime: node
+    buildCommand: npm ci && npm run build && npx prisma generate
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

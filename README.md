@@ -2,9 +2,25 @@
 
 Express + TypeScript + Prisma demo API.
 
-## Render deploy (monorepo `Salon-x`)
+## Render — standalone repo (`jh-salman/demo-api`)
 
-If the connected Git repo is **`Salon-x`** (parent of `salonx/`), use:
+Repo root **is** this project. In Render → Settings:
+
+| Setting | Value |
+|--------|--------|
+| **Root Directory** | *(leave empty / blank)* |
+| **Build Command** | `npm ci && npm run build && npx prisma generate` |
+| **Start Command** | `npm start` |
+
+Do **not** set Root Directory to `demo-api` — that folder does not exist inside this repo.
+
+Production migrations:
+
+```bash
+npx prisma migrate deploy
+```
+
+## Render — monorepo (`Salon-x` with `salonx/demo-api`)
 
 | Setting | Value |
 |--------|--------|
@@ -12,13 +28,4 @@ If the connected Git repo is **`Salon-x`** (parent of `salonx/`), use:
 | **Build Command** | `npm ci && npm run build && npx prisma generate` |
 | **Start Command** | `npm start` |
 
-Do **not** use Root Directory `demo-api` alone — that path does not exist at repo root (`cd .../demo-api` fails).
-
-After deploy, run migrations against production DB (not `migrate dev`):
-
-```bash
-cd salonx/demo-api
-npx prisma migrate deploy
-```
-
-Optional: apply [`render.yaml`](../../render.yaml) at repo root via Render Blueprint.
+See [`render.yaml`](../../render.yaml) at the monorepo git root.
