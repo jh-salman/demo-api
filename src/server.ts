@@ -24,4 +24,5 @@ io.on("connection", (socket) => {
 
 httpServer.listen(env.PORT, () => {
   console.log(`demo-api (Express + Prisma + Socket.IO) http://localhost:${env.PORT}`);
+  console.log("[demo-api] Config schema: s4.headerLogo + headerLogoAdjust enabled");
 });

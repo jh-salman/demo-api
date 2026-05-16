@@ -21,6 +21,9 @@ export function absolutizeConfigImages(
     }
     brand.s2.image = absolutizeUrl(brand.s2.image, origin);
     brand.s4.image = absolutizeUrl(brand.s4.image, origin);
+    if (brand.s4.headerLogo) {
+      brand.s4.headerLogo = absolutizeUrl(brand.s4.headerLogo, origin);
+    }
     brand.s5.image = absolutizeUrl(brand.s5.image, origin);
   }
   return next;

@@ -59,6 +59,10 @@ export type SimpleScreenConfig = {
   adjust: S1DemoSlotAdjust;
   /** Marquee (s2) only: `image` URL points to a video asset when `video`. */
   mediaKind?: "image" | "video";
+  /** Climax (s4) only: co-brand header logo (salonx-web-v2 `.climax-brandbar__logo`). */
+  headerLogo?: string;
+  /** Climax (s4) only: pan/zoom for `headerLogo`. */
+  headerLogoAdjust?: S1DemoSlotAdjust;
 };
 
 export type BrandProfile = {
@@ -179,6 +183,8 @@ function normalizeSimpleScreen(v: unknown): SimpleScreenConfig {
   if (!v || typeof v !== "object") return base;
   const o = v as Record<string, unknown>;
   if (typeof o.image === "string") base.image = o.image;
+  if (typeof o.headerLogo === "string") base.headerLogo = o.headerLogo.trim();
+  if (isSlotAdjust(o.headerLogoAdjust)) base.headerLogoAdjust = clampAdjust(o.headerLogoAdjust);
   if (isSlotAdjust(o.adjust)) base.adjust = clampAdjust(o.adjust);
   if (o.mediaKind === "video") base.mediaKind = "video";
   else base.mediaKind = "image";
