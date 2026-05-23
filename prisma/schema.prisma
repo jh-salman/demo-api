@@ -78,3 +78,54 @@ model SalonxProductCatalog {
   items     Json
   updatedAt DateTime @updatedAt
 }
+
+/// RAMP demo posts — Client Care Card + public `/p/:token` flow.
+model RampDemoPost {
+  id             String   @id @default(cuid())
+  token          String   @unique
+  brandSlug      String
+  recipientPhone String
+  recipientName  String   @default("")
+  stylistName    String   @default("")
+  products       Json     @default("[]")
+  status         String   @default("care_sent")
+  sourceType     String   @default("client_care")
+  careCardUrl    String?
+  compositeUrl   String?
+  caption        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  visits RampVisit[]
+  assets RampSharedAsset[]
+
+  @@index([recipientPhone])
+  @@index([brandSlug])
+}
+
+/// RAMP visit / funnel events (landing, copy, share).
+model RampVisit {
+  id           String   @id @default(cuid())
+  token        String
+  eventType    String
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+  post         RampDemoPost @relation(fields: [token], references: [token], onDelete: Cascade)
+
+  @@index([token])
+}
+
+/// Client selfie / shared media for RAMP artifact.
+model RampSharedAsset {
+  id            String   @id @default(cuid())
+  token         String
+  brandSlug     String   @default("")
+  source        String   @default("web_upload")
+  phone         String?
+  mediaUrl      String?
+  cloudinaryUrl String?
+  createdAt     DateTime @default(now())
+  post          RampDemoPost @relation(fields: [token], references: [token], onDelete: Cascade)
+
+  @@index([token])
+}

@@ -2,12 +2,12 @@ import type { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
 import { prismaUnavailableResponse } from "../../lib/appointments-api.js";
-import { appointmentsService } from "./appointments.service.js";
 import {
   emitAppointmentCreated,
   emitAppointmentDeleted,
   emitAppointmentUpdated,
 } from "../../realtime/io.js";
+import { appointmentsService } from "./appointments.service.js";
 
 function parseRange(
   fromRaw: string | undefined,

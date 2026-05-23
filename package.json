@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
+    "db:reconcile-migrations": "tsx scripts/reconcile-prisma-migrations.ts",
     "db:studio": "prisma studio",
     "db:seed-catalog": "tsx scripts/seed-catalog.ts"
   },

@@ -47,6 +47,11 @@ export const SALONX_THEME_PRESETS: readonly { label: string; hex: string }[] = [
   { label: "Blue", hex: DEFAULT_PRIMARY_HEX },
   { label: "Orange", hex: "#f97316" },
   { label: "Pink", hex: "#ec4899" },
+  { label: "Lime", hex: "#DFFF00" },
+  { label: "White", hex: "#FFFFFF" },
+  { label: "Charcoal", hex: "#1C1C1C" },
+  { label: "Gray", hex: "#545454" },
+  { label: "Burgundy", hex: "#5E001F" },
 ];
 
 const S1_SLOTS: S1DemoSlotId[] = ["topBar", "hero", "promo", "curveStrip"];
