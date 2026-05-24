@@ -1,5 +1,11 @@
 /** Multi-brand build config + salonx-web-v2 theme + stylist (s1) demo payload (active brand). */
 
+import {
+  normalizeS1DemoVariantsField,
+  syncLegacyFromActiveVariants,
+  type S1DemoWithVariants,
+} from "./s1-demo-variants.js";
+
 export type S1DemoSlotId = "topBar" | "hero" | "promo" | "curveStrip";
 
 export type S1DemoSlotAdjust = {
@@ -79,6 +85,12 @@ export type BrandProfile = {
     adjust: Record<S1DemoSlotId, S1DemoSlotAdjust>;
     /** Optional; omitted slot defaults to `image`. */
     mediaKinds?: Partial<Record<S1DemoSlotId, S1DemoSlotMediaKind>>;
+    variants?: Partial<
+      Record<
+        S1DemoSlotId,
+        import("./s1-demo-variants.js").S1DemoSlotVariantSet
+      >
+    >;
   };
   s2: SimpleScreenConfig;
   s4: SimpleScreenConfig;
@@ -234,6 +246,17 @@ export function normalizeBrand(b: unknown, fallbackId: string, fallbackName: str
         else if (v === "image") out[slot] = "image";
       }
       base.s1Demo.mediaKinds = out;
+    }
+    const variants = normalizeS1DemoVariantsField(
+      (s1 as { variants?: unknown }).variants,
+    );
+    if (variants) {
+      base.s1Demo.variants = variants;
+      const synced = syncLegacyFromActiveVariants(base.s1Demo as S1DemoWithVariants);
+      base.s1Demo.images = synced.images;
+      base.s1Demo.adjust = synced.adjust;
+      base.s1Demo.mediaKinds = synced.mediaKinds;
+      base.s1Demo.variants = synced.variants;
     }
   }
 

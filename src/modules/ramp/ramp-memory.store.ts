@@ -80,6 +80,13 @@ export const rampMemoryStore = {
     assets.push(row);
     return row;
   },
+
+  listRecent(limit = 24): MemoryPost[] {
+    const cap = Math.max(1, Math.min(50, limit));
+    return Array.from(postsByToken.values())
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, cap);
+  },
 };
 
 export function normalizeProducts(raw: unknown): string[] {

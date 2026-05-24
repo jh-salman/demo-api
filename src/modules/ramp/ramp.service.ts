@@ -313,4 +313,38 @@ export const rampService = {
     await recordVisitDb(t, eventType);
     return { ok: true as const, token: t, eventType };
   },
+
+  listRecent: async (limit = 24) => {
+    const cap = Math.max(1, Math.min(50, Number(limit) || 24));
+    const prisma = getPrisma();
+    if (prisma) {
+      try {
+        const rows = await prisma.rampDemoPost.findMany({
+          orderBy: { updatedAt: "desc" },
+          take: cap,
+        });
+        return {
+          items: rows.map((row) => ({
+            id: row.id,
+            token: row.token,
+            title: row.recipientName || row.recipientPhone,
+            status: normalizeStatus(row.status),
+            createdAt: row.createdAt.toISOString(),
+          })),
+        };
+      } catch {
+        /* table missing — fall through to memory store */
+      }
+    }
+    const rows = rampMemoryStore.listRecent(cap);
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        token: row.token,
+        title: row.recipientName || row.recipientPhone,
+        status: normalizeStatus(row.status),
+        createdAt: row.createdAt,
+      })),
+    };
+  },
 };

@@ -65,4 +65,9 @@ export const rampController = {
     res.setHeader("Cache-Control", "public, max-age=300");
     res.send(svg);
   }),
+
+  listRecent: asyncHandler(async (req: Request, res: Response) => {
+    const limit = Number(req.query.limit) || 24;
+    res.json({ ok: true, ...(await rampService.listRecent(limit)) });
+  }),
 };
