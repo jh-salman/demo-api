@@ -33,7 +33,7 @@ const S1_SLOTS: S1DemoSlotId[] = ["topBar", "hero", "promo", "curveStrip"];
 
 export const MAX_S1_SLOT_VARIANTS = 3;
 
-function isSlotAdjust(v: unknown): v is S1DemoSlotAdjust {
+export function isSlotAdjust(v: unknown): v is S1DemoSlotAdjust {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
   return (
@@ -45,7 +45,7 @@ function isSlotAdjust(v: unknown): v is S1DemoSlotAdjust {
   );
 }
 
-function clampAdjust(a: S1DemoSlotAdjust): S1DemoSlotAdjust {
+export function clampAdjust(a: S1DemoSlotAdjust): S1DemoSlotAdjust {
   return {
     scale: Math.min(60, Math.max(0.35, a.scale)),
     rotate: Math.min(180, Math.max(-180, a.rotate)),

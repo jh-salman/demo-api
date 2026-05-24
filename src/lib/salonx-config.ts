@@ -5,6 +5,12 @@ import {
   syncLegacyFromActiveVariants,
   type S1DemoWithVariants,
 } from "./s1-demo-variants.js";
+import {
+  normalizeUploadHistoryField,
+  seedUploadHistoryFromSlotState,
+  mergeUploadHistories,
+  type S1DemoWithHistory,
+} from "./s1-demo-upload-history.js";
 
 export type S1DemoSlotId = "topBar" | "hero" | "promo" | "curveStrip";
 
@@ -89,6 +95,12 @@ export type BrandProfile = {
       Record<
         S1DemoSlotId,
         import("./s1-demo-variants.js").S1DemoSlotVariantSet
+      >
+    >;
+    uploadHistory?: Partial<
+      Record<
+        S1DemoSlotId,
+        import("./s1-demo-upload-history.js").S1DemoUploadHistoryItem[]
       >
     >;
   };
@@ -258,6 +270,15 @@ export function normalizeBrand(b: unknown, fallbackId: string, fallbackName: str
       base.s1Demo.mediaKinds = synced.mediaKinds;
       base.s1Demo.variants = synced.variants;
     }
+    const uploadHistory = normalizeUploadHistoryField(
+      (s1 as { uploadHistory?: unknown }).uploadHistory,
+    );
+    let withHistory = base.s1Demo as S1DemoWithHistory;
+    if (uploadHistory) {
+      withHistory = mergeUploadHistories(withHistory, uploadHistory);
+    }
+    const seeded = seedUploadHistoryFromSlotState(withHistory);
+    base.s1Demo.uploadHistory = seeded.uploadHistory;
   }
 
   base.s2 = normalizeSimpleScreen(o.s2);
