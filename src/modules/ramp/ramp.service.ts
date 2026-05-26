@@ -1,20 +1,26 @@
 import type { Request } from "express";
 import { getPrisma } from "../../lib/prisma.js";
-import { buildCareCardSvg, rampCareCardAssetUrl } from "./ramp-care-card.js";
-import { RAMP_DEMO_PROFILE, buildCareCardSms, buildDemoCaption } from "./ramp-demo-profile.js";
+import { buildDemoCaption } from "./ramp-demo-profile.js";
 import {
   mintRampToken,
   normalizeProducts,
   normalizeStatus,
   rampMemoryStore,
 } from "./ramp-memory.store.js";
-import { rampLandingUrl, sendRampSms } from "./ramp-sms.js";
+import { RAMP_DEMO_PROFILE } from "./ramp-demo-profile.js";
+import { rampLandingUrl } from "./ramp-sms.js";
 import type {
-  FireCareCardRequest,
-  FireCareCardResponse,
   RampDemoPostDto,
+  StartStylistPostRequest,
+  StartStylistPostResponse,
   StoreSharedSelfieRequest,
 } from "./ramp.types.js";
+
+const RAMP_POST_STATUSES = new Set(["ready", "posted"]);
+
+function isRampPostReady(status: string | null | undefined): boolean {
+  return RAMP_POST_STATUSES.has(normalizeStatus(status));
+}
 
 function dtoFromRow(row: {
   token: string;
@@ -85,202 +91,25 @@ async function recordVisitDb(token: string, eventType: string, metadata?: unknow
   });
 }
 
-export const rampService = {
-  fireCareCard: async (
-    req: Request,
-    body: FireCareCardRequest,
-  ): Promise<FireCareCardResponse> => {
-    const recipientPhone = String(body.recipientPhone || "").trim();
-    if (!recipientPhone) throw new Error("recipientPhone is required");
+async function storeSharedSelfieImpl(body: StoreSharedSelfieRequest) {
+  const token = String(body.token || "").trim();
+  const mediaUrl = String(body.mediaUrl || "").trim();
+  if (!token || !mediaUrl) throw new Error("token and mediaUrl are required");
 
-    const brandSlug = String(body.brandSlug || RAMP_DEMO_PROFILE.brandSlug).trim();
-    const recipientName = String(body.recipientName || "").trim();
-    const stylistName = String(body.stylistName || RAMP_DEMO_PROFILE.stylistName).trim();
-    const products = normalizeProducts(body.products);
-    const token = mintRampToken();
-    const landingUrl = rampLandingUrl(req, token);
-    const careCardUrl = rampCareCardAssetUrl(req, token);
-    const caption = buildDemoCaption({ recipientName, stylistName, products });
-    const messagePreview = buildCareCardSms({ recipientName, stylistName, landingUrl });
-
-    const prisma = getPrisma();
-    if (prisma) {
-      try {
-        await prisma.rampDemoPost.create({
-          data: {
-            token,
-            brandSlug,
-            recipientPhone,
-            recipientName,
-            stylistName,
-            products,
-            status: "care_sent",
-            sourceType: "client_care",
-            careCardUrl,
-            caption,
-          },
-        });
-        await recordVisitDb(token, "care_card_fired", { brandSlug, recipientPhone });
-      } catch (e) {
-        const code = e && typeof e === "object" && "code" in e ? String((e as { code?: string }).code) : "";
-        if (code !== "P2021") throw e;
-        console.warn("[ramp] RampDemoPost table missing — using in-memory store");
-        rampMemoryStore.createPost({
-          token,
-          brandSlug,
-          recipientPhone,
-          recipientName,
-          stylistName,
-          products,
-          status: "care_sent",
-          sourceType: "client_care",
-          careCardUrl,
-          compositeUrl: null,
-          caption,
-          landingUrl,
-        });
-        rampMemoryStore.recordVisit(token, "care_card_fired", { brandSlug, recipientPhone });
-      }
-    } else {
-      rampMemoryStore.createPost({
-        token,
-        brandSlug,
-        recipientPhone,
-        recipientName,
-        stylistName,
-        products,
-        status: "care_sent",
-        sourceType: "client_care",
-        careCardUrl,
-        compositeUrl: null,
-        caption,
-        landingUrl,
-      });
-      rampMemoryStore.recordVisit(token, "care_card_fired", { brandSlug, recipientPhone });
-    }
-
-    const sms = await sendRampSms({
-      to: recipientPhone,
-      body: messagePreview,
-      mediaUrl: careCardUrl,
-    });
-
-    return {
-      ok: true,
-      token,
-      landingUrl,
-      careCardUrl,
-      sent: sms.sent,
-      smsMode: sms.mock ? "mock" : "twilio",
-      ...(sms.mock ? { mock: true } : {}),
-      messagePreview,
-    };
-  },
-
-  getCareCardSvg: async (token: string): Promise<string | null> => {
-    const t = String(token || "").trim().replace(/\.svg$/i, "");
-    if (!t) return null;
-
-    const prisma = getPrisma();
-    if (prisma) {
-      const row = await prisma.rampDemoPost.findUnique({ where: { token: t } });
-      if (!row) return null;
-      return buildCareCardSvg({
-        recipientName: row.recipientName,
-        stylistName: row.stylistName,
-        products: normalizeProducts(row.products),
-      });
-    }
-
-    const row = rampMemoryStore.getPost(t);
-    if (!row) return null;
-    return buildCareCardSvg({
-      recipientName: row.recipientName,
-      stylistName: row.stylistName,
-      products: row.products,
-    });
-  },
-
-  getPostByToken: async (req: Request, token: string): Promise<RampDemoPostDto | null> => {
-    const t = String(token || "").trim();
-    if (!t) return null;
-
-    const prisma = getPrisma();
-    if (prisma) {
-      const row = await prisma.rampDemoPost.findUnique({ where: { token: t } });
-      if (!row) return null;
-      await recordVisitDb(t, "landing_view");
-      return dtoFromRow({
-        ...row,
-        landingUrl: rampLandingUrl(req, row.token),
-      });
-    }
-
-    const row = rampMemoryStore.getPost(t);
-    if (!row) return null;
-    rampMemoryStore.recordVisit(t, "landing_view");
-    return dtoFromMemory(row);
-  },
-
-  storeSharedSelfie: async (body: StoreSharedSelfieRequest) => {
-    const token = String(body.token || "").trim();
-    const mediaUrl = String(body.mediaUrl || "").trim();
-    if (!token || !mediaUrl) throw new Error("token and mediaUrl are required");
-
-    const prisma = getPrisma();
-    if (prisma) {
-      const post = await prisma.rampDemoPost.findUnique({ where: { token } });
-      if (!post) throw new Error("Unknown RAMP token");
-
-      await prisma.rampSharedAsset.create({
-        data: {
-          token,
-          brandSlug: post.brandSlug,
-          source: String(body.source || "web_upload").trim() || "web_upload",
-          phone: body.phone ? String(body.phone).trim() : null,
-          mediaUrl,
-          cloudinaryUrl: mediaUrl.includes("cloudinary.com") ? mediaUrl : null,
-        },
-      });
-
-      const caption =
-        post.caption ||
-        buildDemoCaption({
-          recipientName: post.recipientName,
-          stylistName: post.stylistName,
-          products: normalizeProducts(post.products),
-        });
-
-      const updated = await prisma.rampDemoPost.update({
-        where: { token },
-        data: {
-          status: "ready",
-          compositeUrl: mediaUrl,
-          caption,
-        },
-      });
-
-      await recordVisitDb(token, "selfie_stored", { mediaUrl });
-
-      return {
-        ok: true as const,
-        token,
-        status: updated.status,
-        compositeUrl: updated.compositeUrl,
-        caption: updated.caption,
-      };
-    }
-
-    const post = rampMemoryStore.getPost(token);
+  const prisma = getPrisma();
+  if (prisma) {
+    const post = await prisma.rampDemoPost.findUnique({ where: { token } });
     if (!post) throw new Error("Unknown RAMP token");
 
-    rampMemoryStore.storeAsset({
-      token,
-      brandSlug: post.brandSlug,
-      source: String(body.source || "web_upload").trim() || "web_upload",
-      phone: body.phone ? String(body.phone).trim() : null,
-      mediaUrl,
-      cloudinaryUrl: mediaUrl.includes("cloudinary.com") ? mediaUrl : null,
+    await prisma.rampSharedAsset.create({
+      data: {
+        token,
+        brandSlug: post.brandSlug,
+        source: String(body.source || "stylist_post").trim() || "stylist_post",
+        phone: body.phone ? String(body.phone).trim() : null,
+        mediaUrl,
+        cloudinaryUrl: mediaUrl.includes("cloudinary.com") ? mediaUrl : null,
+      },
     });
 
     const caption =
@@ -288,24 +117,191 @@ export const rampService = {
       buildDemoCaption({
         recipientName: post.recipientName,
         stylistName: post.stylistName,
-        products: post.products,
+        products: normalizeProducts(post.products),
+        postStyle: post.sourceType?.replace(/^ramp_/, ""),
       });
 
-    rampMemoryStore.updatePost(token, {
-      status: "ready",
-      compositeUrl: mediaUrl,
-      caption,
+    const updated = await prisma.rampDemoPost.update({
+      where: { token },
+      data: {
+        status: "ready",
+        compositeUrl: mediaUrl,
+        caption,
+      },
     });
-    rampMemoryStore.recordVisit(token, "selfie_stored", { mediaUrl });
+
+    await recordVisitDb(token, "ramp_post_ready", { mediaUrl });
 
     return {
       ok: true as const,
       token,
-      status: "ready",
-      compositeUrl: mediaUrl,
-      caption,
+      status: updated.status,
+      compositeUrl: updated.compositeUrl,
+      caption: updated.caption,
     };
+  }
+
+  const post = rampMemoryStore.getPost(token);
+  if (!post) throw new Error("Unknown RAMP token");
+
+  rampMemoryStore.storeAsset({
+    token,
+    brandSlug: post.brandSlug,
+    source: String(body.source || "stylist_post").trim() || "stylist_post",
+    phone: body.phone ? String(body.phone).trim() : null,
+    mediaUrl,
+    cloudinaryUrl: mediaUrl.includes("cloudinary.com") ? mediaUrl : null,
+  });
+
+  const caption =
+    post.caption ||
+    buildDemoCaption({
+      recipientName: post.recipientName,
+      stylistName: post.stylistName,
+      products: post.products,
+      postStyle: post.sourceType?.replace(/^ramp_/, ""),
+    });
+
+  rampMemoryStore.updatePost(token, {
+    status: "ready",
+    compositeUrl: mediaUrl,
+    caption,
+  });
+  rampMemoryStore.recordVisit(token, "ramp_post_ready", { mediaUrl });
+
+  return {
+    ok: true as const,
+    token,
+    status: "ready" as const,
+    compositeUrl: mediaUrl,
+    caption,
+  };
+}
+
+function normalizeCaptureType(raw?: string): string {
+  const v = String(raw || "photo").trim().toLowerCase();
+  if (v === "upload" || v === "reel" || v === "photo") return v;
+  return "photo";
+}
+
+function normalizeTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((t) => String(t || "").trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function normalizeLinks(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((l) => String(l || "").trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+async function startStylistPostImpl(
+  req: Request,
+  body: StartStylistPostRequest,
+): Promise<StartStylistPostResponse> {
+  const token = mintRampToken();
+  const brandSlug =
+    String(body.brandSlug || RAMP_DEMO_PROFILE.brandSlug).trim() || RAMP_DEMO_PROFILE.brandSlug;
+  const recipientName = String(body.recipientName || "").trim();
+  const recipientPhone = String(body.recipientPhone || "").trim();
+  const stylistName =
+    String(body.stylistName || RAMP_DEMO_PROFILE.stylistName).trim() ||
+    RAMP_DEMO_PROFILE.stylistName;
+  const products = normalizeProducts(body.products);
+  const captureType = normalizeCaptureType(body.captureType);
+  const postStyle = String(body.postStyle || "new_look").trim().toLowerCase() || "new_look";
+  const tags = normalizeTags(body.tags);
+  const links = normalizeLinks(body.links);
+  const sourceType = `ramp_${captureType}`;
+  const landingUrl = rampLandingUrl(req, token);
+  const caption = buildDemoCaption({
+    recipientName,
+    stylistName,
+    products,
+    postStyle,
+    tags,
+    links,
+  });
+  const visitMeta = {
+    appointmentId: body.appointmentId ?? null,
+    postStyle,
+    captureType,
+    tags,
+    links,
+  };
+
+  const prisma = getPrisma();
+  if (prisma) {
+    try {
+      await prisma.rampDemoPost.create({
+        data: {
+          token,
+          brandSlug,
+          recipientPhone,
+          recipientName,
+          stylistName,
+          products,
+          status: "processing",
+          sourceType,
+          caption,
+        },
+      });
+      await recordVisitDb(token, "ramp_bolt_start", visitMeta);
+      return { ok: true, token, landingUrl, status: "processing" };
+    } catch {
+      /* table missing — fall through to memory store */
+    }
+  }
+
+  rampMemoryStore.createPost({
+    token,
+    brandSlug,
+    recipientPhone,
+    recipientName,
+    stylistName,
+    products,
+    status: "processing",
+    sourceType,
+    careCardUrl: null,
+    compositeUrl: null,
+    caption,
+    landingUrl,
+  });
+  rampMemoryStore.recordVisit(token, "ramp_bolt_start", visitMeta);
+
+  return { ok: true, token, landingUrl, status: "processing" };
+}
+
+export const rampService = {
+  getPostByToken: async (req: Request, token: string): Promise<RampDemoPostDto | null> => {
+    const t = String(token || "").trim();
+    if (!t) return null;
+
+    const prisma = getPrisma();
+    if (prisma) {
+      const row = await prisma.rampDemoPost.findUnique({ where: { token: t } });
+      if (!row || !isRampPostReady(row.status) || !row.compositeUrl) return null;
+      await recordVisitDb(t, "post_it_view");
+      return dtoFromRow({
+        ...row,
+        landingUrl: rampLandingUrl(req, row.token),
+      });
+    }
+
+    const row = rampMemoryStore.getPost(t);
+    if (!row || !isRampPostReady(row.status) || !row.compositeUrl) return null;
+    rampMemoryStore.recordVisit(t, "post_it_view");
+    return dtoFromMemory(row);
   },
+
+  storeSharedSelfie: storeSharedSelfieImpl,
+
+  startStylistPost: startStylistPostImpl,
 
   trackCopy: async (token: string, eventType = "caption_copy") => {
     const t = String(token || "").trim();
@@ -320,6 +316,7 @@ export const rampService = {
     if (prisma) {
       try {
         const rows = await prisma.rampDemoPost.findMany({
+          where: { status: { in: ["ready", "posted"] } },
           orderBy: { updatedAt: "desc" },
           take: cap,
         });
@@ -336,7 +333,7 @@ export const rampService = {
         /* table missing — fall through to memory store */
       }
     }
-    const rows = rampMemoryStore.listRecent(cap);
+    const rows = rampMemoryStore.listRecent(cap).filter((row) => isRampPostReady(row.status));
     return {
       items: rows.map((row) => ({
         id: row.id,

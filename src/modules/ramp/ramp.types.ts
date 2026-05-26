@@ -6,14 +6,6 @@ export type RampPostStatus =
   | "ready"
   | "posted";
 
-export type FireCareCardRequest = {
-  brandSlug?: string;
-  recipientPhone: string;
-  recipientName?: string;
-  stylistName?: string;
-  products?: string[];
-};
-
 export type RampDemoPostDto = {
   token: string;
   brandSlug: string;
@@ -31,20 +23,29 @@ export type RampDemoPostDto = {
   updatedAt: string;
 };
 
-export type FireCareCardResponse = {
-  ok: true;
-  token: string;
-  landingUrl: string;
-  careCardUrl: string;
-  sent: boolean;
-  mock?: boolean;
-  smsMode: "mock" | "twilio";
-  messagePreview: string;
-};
-
 export type StoreSharedSelfieRequest = {
   token: string;
   mediaUrl: string;
   phone?: string;
   source?: string;
+};
+
+export type StartStylistPostRequest = {
+  postStyle?: string;
+  recipientName?: string;
+  recipientPhone?: string;
+  appointmentId?: string | null;
+  stylistName?: string;
+  products?: string[];
+  tags?: string[];
+  links?: string[];
+  captureType?: string;
+  brandSlug?: string;
+};
+
+export type StartStylistPostResponse = {
+  ok: true;
+  token: string;
+  landingUrl: string;
+  status: "processing";
 };

@@ -1,4 +1,8 @@
 import type { Request } from "express";
+import { normalizePhone } from "./ramp-phone.js";
+import { sendSalesmsgMessage } from "./ramp-salesmsg.js";
+
+export type SmsProvider = "mock" | "twilio" | "salesmsg";
 
 export type SmsSendResult = {
   sent: boolean;
@@ -7,7 +11,7 @@ export type SmsSendResult = {
   sid?: string;
 };
 
-/** Parse `RAMP_SMS_MOCK` — default `true` (demo-safe). Set `false` to use Twilio when creds exist. */
+/** Parse `RAMP_SMS_MOCK` — default `true` (demo-safe). Set `false` for live send. */
 export function isRampSmsMockMode(): boolean {
   const raw = process.env.RAMP_SMS_MOCK?.trim().toLowerCase();
   if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return false;
@@ -15,52 +19,41 @@ export function isRampSmsMockMode(): boolean {
   return true;
 }
 
-function normalizePhone(raw: string): string {
-  const digits = String(raw || "").replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  if (String(raw || "").trim().startsWith("+")) return String(raw).trim();
-  return digits.startsWith("+") ? digits : `+${digits}`;
+export function getRampSmsProvider(): SmsProvider {
+  if (isRampSmsMockMode()) return "mock";
+
+  const explicit = process.env.RAMP_SMS_PROVIDER?.trim().toLowerCase();
+  if (explicit === "twilio" || explicit === "salesmsg" || explicit === "mock") {
+    return explicit;
+  }
+
+  if (process.env.SALESMSG_ACCESS_TOKEN?.trim() || process.env.SALESMSG_API_TOKEN?.trim()) {
+    return "salesmsg";
+  }
+  if (process.env.TWILIO_ACCOUNT_SID?.trim()) return "twilio";
+  return "salesmsg";
 }
 
-export async function sendRampSms(input: {
+async function sendViaTwilio(input: {
   to: string;
   body: string;
   mediaUrl?: string | null;
 }): Promise<SmsSendResult> {
-  const to = normalizePhone(input.to);
-  const body = String(input.body || "").trim();
-  const mediaUrl = String(input.mediaUrl || "").trim();
-  if (!to || !body) {
-    throw new Error("recipientPhone and message body are required");
-  }
-
-  if (isRampSmsMockMode()) {
-    console.info("[ramp:sms:mock]", {
-      RAMP_SMS_MOCK: process.env.RAMP_SMS_MOCK ?? "(default true)",
-      to,
-      body,
-      ...(mediaUrl ? { mediaUrl } : {}),
-    });
-    return { sent: true, mock: true, provider: "mock" };
-  }
-
   const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
   const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
   const from = process.env.TWILIO_FROM_NUMBER?.trim();
 
   if (!accountSid || !authToken || !from) {
     throw new Error(
-      "RAMP_SMS_MOCK=false but Twilio is not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)",
+      "RAMP_SMS_PROVIDER=twilio but Twilio is not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)",
     );
   }
 
   const params = new URLSearchParams();
-  params.set("To", to);
+  params.set("To", input.to);
   params.set("From", from);
-  params.set("Body", body);
-  if (mediaUrl) params.set("MediaUrl", mediaUrl);
+  params.set("Body", input.body);
+  if (input.mediaUrl) params.set("MediaUrl", input.mediaUrl);
 
   const res = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
@@ -87,6 +80,52 @@ export async function sendRampSms(input: {
   };
 }
 
+async function sendViaSalesmsg(input: {
+  to: string;
+  body: string;
+  mediaUrl?: string | null;
+}): Promise<SmsSendResult> {
+  const result = await sendSalesmsgMessage(input);
+  return {
+    sent: true,
+    mock: false,
+    provider: "salesmsg",
+    sid: result.messageId,
+  };
+}
+
+export async function sendRampSms(input: {
+  to: string;
+  body: string;
+  mediaUrl?: string | null;
+}): Promise<SmsSendResult> {
+  const to = normalizePhone(input.to);
+  const body = String(input.body || "").trim();
+  const mediaUrl = String(input.mediaUrl || "").trim() || null;
+  if (!to || !body) {
+    throw new Error("recipientPhone and message body are required");
+  }
+
+  const provider = getRampSmsProvider();
+
+  if (provider === "mock") {
+    console.info("[ramp:sms:mock]", {
+      RAMP_SMS_MOCK: process.env.RAMP_SMS_MOCK ?? "(default true)",
+      provider: "mock",
+      to,
+      body,
+      ...(mediaUrl ? { mediaUrl } : {}),
+    });
+    return { sent: true, mock: true, provider: "mock" };
+  }
+
+  if (provider === "salesmsg") {
+    return sendViaSalesmsg({ to, body, mediaUrl });
+  }
+
+  return sendViaTwilio({ to, body, mediaUrl });
+}
+
 /** Public SPA origin where `/p/:token` lives (salonx-web-v2), not demo-api. */
 export function rampPublicBaseUrl(req?: Request): string {
   const env =
@@ -105,3 +144,5 @@ export function rampLandingUrl(req: Request | undefined, token: string): string 
   const base = rampPublicBaseUrl(req).replace(/\/$/, "");
   return `${base}/p/${encodeURIComponent(token)}`;
 }
+
+export { normalizePhone } from "./ramp-phone.js";

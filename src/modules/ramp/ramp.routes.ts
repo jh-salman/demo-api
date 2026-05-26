@@ -6,4 +6,4 @@ export const rampRouter = Router();
 
 rampRouter.get("/recent", rampController.listRecent);
 rampRouter.get("/post/:token", rampController.getPost);
-rampRouter.get("/care-card/:token", rampController.careCardSvg);
+rampRouter.post("/start-post", rampController.startStylistPost);
