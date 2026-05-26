@@ -3,8 +3,12 @@ export type RampPostStatus =
   | "landing"
   | "selfie_received"
   | "processing"
+  | "pending"
+  | "generating"
   | "ready"
-  | "posted";
+  | "posted"
+  | "sent"
+  | "failed";
 
 export type RampDemoPostDto = {
   token: string;
@@ -48,4 +52,27 @@ export type StartStylistPostResponse = {
   token: string;
   landingUrl: string;
   status: "processing";
+};
+
+export type SubmitRampCaptureResponse = {
+  ok: true;
+  token: string;
+  status: "pending";
+};
+
+export type RampStatusResponse = {
+  ok: true;
+  post: RampDemoPostDto;
+};
+
+export type SendRampSmsResponse = {
+  ok: true;
+  token: string;
+  status: "sent";
+  sms: {
+    sent: boolean;
+    mock: boolean;
+    provider?: string;
+    sid?: string;
+  };
 };

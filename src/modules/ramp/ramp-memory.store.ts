@@ -103,8 +103,12 @@ export function normalizeStatus(raw: string | null | undefined): RampPostStatus 
     "landing",
     "selfie_received",
     "processing",
+    "pending",
+    "generating",
     "ready",
     "posted",
+    "sent",
+    "failed",
   ];
   return allowed.includes(raw as RampPostStatus) ? (raw as RampPostStatus) : "care_sent";
 }

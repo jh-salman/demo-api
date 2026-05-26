@@ -145,4 +145,16 @@ export function rampLandingUrl(req: Request | undefined, token: string): string 
   return `${base}/p/${encodeURIComponent(token)}`;
 }
 
+/** SMS body must include the clickable link in text (not only MMS image). */
+export function buildRampShareSmsBody(input: {
+  caption: string;
+  landingUrl: string;
+}): string {
+  const caption = String(input.caption || "").trim();
+  const landingUrl = String(input.landingUrl || "").trim();
+  if (!landingUrl) return caption;
+  if (!caption) return `Your look is ready — view & share: ${landingUrl}`;
+  return `${caption}\n\nView & share: ${landingUrl}`;
+}
+
 export { normalizePhone } from "./ramp-phone.js";
