@@ -47,7 +47,7 @@ async function salesmsgRequest<T extends SalesmsgJson>(
   const url = `${SALESMSG_API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${salesmsgToken()}`);
-  if (!headers.has("Content-Type") && init.body) {
+  if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   headers.set("Accept", "application/json");
@@ -133,18 +133,27 @@ export async function sendSalesmsgMessage(input: {
   }
 
   const conversation = await openConversation(contact.id);
-  const payload: Record<string, unknown> = { message: body };
+
+  // Salesmsg MMS uses query params — JSON `{ media: [...] }` is ignored by the API.
+  const params = new URLSearchParams();
+  params.set("message", body);
   if (mediaUrl) {
-    payload.media = [mediaUrl];
+    params.append("media_url[][url]", mediaUrl);
   }
 
-  const sent = await salesmsgRequest<{ id?: number }>(
-    `/messages/${conversation.id}`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
+  const sent = await salesmsgRequest<{ id?: number; type?: string; media?: unknown[] }>(
+    `/messages/${conversation.id}?${params.toString()}`,
+    { method: "POST" },
   );
+
+  if (mediaUrl && (!Array.isArray(sent.media) || sent.media.length === 0)) {
+    console.warn("[ramp:salesmsg] MMS media missing in API response", {
+      conversationId: conversation.id,
+      messageId: sent.id,
+      type: sent.type,
+      mediaUrl,
+    });
+  }
 
   return {
     messageId: sent.id != null ? String(sent.id) : undefined,

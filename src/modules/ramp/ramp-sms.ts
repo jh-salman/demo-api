@@ -1,6 +1,7 @@
 import type { Request } from "express";
 import { normalizePhone } from "./ramp-phone.js";
 import { sendSalesmsgMessage } from "./ramp-salesmsg.js";
+import { RAMP_DEMO_PROFILE } from "./ramp-demo-profile.js";
 
 export type SmsProvider = "mock" | "twilio" | "salesmsg";
 
@@ -11,8 +12,18 @@ export type SmsSendResult = {
   sid?: string;
 };
 
+/**
+ * Live carrier SMS/MMS (Salesmsg, Twilio). Demo default: OFF.
+ * Set `RAMP_CARRIER_SMS_ENABLED=true` only for production carrier send.
+ */
+export function isCarrierSmsEnabled(): boolean {
+  const raw = process.env.RAMP_CARRIER_SMS_ENABLED?.trim().toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
+
 /** Parse `RAMP_SMS_MOCK` — default `true` (demo-safe). Set `false` for live send. */
 export function isRampSmsMockMode(): boolean {
+  if (!isCarrierSmsEnabled()) return true;
   const raw = process.env.RAMP_SMS_MOCK?.trim().toLowerCase();
   if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return false;
   if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return true;
@@ -110,13 +121,14 @@ export async function sendRampSms(input: {
 
   if (provider === "mock") {
     console.info("[ramp:sms:mock]", {
+      RAMP_CARRIER_SMS_ENABLED: process.env.RAMP_CARRIER_SMS_ENABLED ?? "(default off)",
       RAMP_SMS_MOCK: process.env.RAMP_SMS_MOCK ?? "(default true)",
-      provider: "mock",
+      provider: "demo_manual",
       to,
       body,
       ...(mediaUrl ? { mediaUrl } : {}),
     });
-    return { sent: true, mock: true, provider: "mock" };
+    return { sent: false, mock: true, provider: "demo_manual" };
   }
 
   if (provider === "salesmsg") {
@@ -145,16 +157,26 @@ export function rampLandingUrl(req: Request | undefined, token: string): string 
   return `${base}/p/${encodeURIComponent(token)}`;
 }
 
-/** SMS body must include the clickable link in text (not only MMS image). */
+/** RAMP share SMS/MMS — caption only; image rides as MMS media (no link in text). */
 export function buildRampShareSmsBody(input: {
   caption: string;
-  landingUrl: string;
+  landingUrl?: string;
 }): string {
-  const caption = String(input.caption || "").trim();
-  const landingUrl = String(input.landingUrl || "").trim();
-  if (!landingUrl) return caption;
-  if (!caption) return `Your look is ready — view & share: ${landingUrl}`;
-  return `${caption}\n\nView & share: ${landingUrl}`;
+  return String(input.caption || "").trim();
+}
+
+/** Client Care Card — thank-you text only; card image is MMS media (no link in text). */
+export function buildClientCareSmsBody(input: {
+  recipientName: string;
+  stylistName: string;
+  landingUrl?: string;
+}): string {
+  const first =
+    String(input.recipientName || "Guest")
+      .trim()
+      .split(/\s+/)[0] || "Guest";
+  const stylist = String(input.stylistName || RAMP_DEMO_PROFILE.stylistName).trim();
+  return `Thank you, ${first}! Your Client Care Card from ${stylist} is ready.`;
 }
 
 export { normalizePhone } from "./ramp-phone.js";

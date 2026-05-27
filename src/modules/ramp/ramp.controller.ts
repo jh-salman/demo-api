@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
 import { rampService } from "./ramp.service.js";
-import type { StoreSharedSelfieRequest, StartStylistPostRequest } from "./ramp.types.js";
+import type { StoreSharedSelfieRequest, StartStylistPostRequest, FireClientCareCardRequest } from "./ramp.types.js";
 
 export const rampController = {
   getPost: asyncHandler(async (req: Request, res: Response) => {
@@ -95,6 +95,22 @@ export const rampController = {
         msg.includes("not ready") ||
         msg.includes("phone number")
       ) {
+        throw new HttpError(400, msg);
+      }
+      throw new HttpError(500, msg);
+    }
+  }),
+
+  fireCareCard: asyncHandler(async (req: Request, res: Response) => {
+    const body = req.body as FireClientCareCardRequest;
+    if (!body || typeof body !== "object") {
+      throw new HttpError(400, "Expected JSON object");
+    }
+    try {
+      res.json(await rampService.fireClientCareCard(req, body));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "fire-care-card failed";
+      if (msg.includes("phone number")) {
         throw new HttpError(400, msg);
       }
       throw new HttpError(500, msg);

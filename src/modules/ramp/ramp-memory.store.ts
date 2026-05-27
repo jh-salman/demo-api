@@ -59,6 +59,13 @@ export const rampMemoryStore = {
     });
   },
 
+  getVisitMetadata(token: string, eventType: string): Record<string, unknown> | null {
+    const rows = visits.filter((v) => v.token === token && v.eventType === eventType);
+    const last = rows[rows.length - 1];
+    if (!last?.metadataJson || typeof last.metadataJson !== "object") return null;
+    return last.metadataJson as Record<string, unknown>;
+  },
+
   storeAsset(input: {
     token: string;
     brandSlug: string;

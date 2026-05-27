@@ -32,6 +32,7 @@ export function registerRoutes(app: Express) {
   app.use("/api/appointment-visit", appointmentVisitRouter);
   app.use("/api/appointments", appointmentsRouter);
   // SUPER RAMP 2 — POST IT runtime (NUCLEAR 7 contract paths)
+  app.post("/api/fire-care-card", rampController.fireCareCard);
   app.post("/api/store-shared-selfie", rampController.storeSharedSelfie);
   app.post("/api/track-copy", rampController.trackCopy);
   app.use("/api/ramp", rampRouter);

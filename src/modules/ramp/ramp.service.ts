@@ -9,9 +9,19 @@ import {
   rampMemoryStore,
 } from "./ramp-memory.store.js";
 import { RAMP_DEMO_PROFILE } from "./ramp-demo-profile.js";
-import { buildRampShareSmsBody, rampLandingUrl, sendRampSms } from "./ramp-sms.js";
+import {
+  buildClientCareSmsBody,
+  buildRampShareSmsBody,
+  rampLandingUrl,
+  rampPublicBaseUrl,
+  sendRampSms,
+} from "./ramp-sms.js";
 import { generateBrandedRampImage, isOpenAiMockMode } from "./ramp-openai.js";
+import { normalizeRampPostStylePreset } from "./ramp-ai-prompts.js";
+import { normalizePhone } from "./ramp-phone.js";
 import type {
+  FireClientCareCardRequest,
+  FireClientCareCardResponse,
   RampDemoPostDto,
   RampPostStatus,
   SendRampSmsResponse,
@@ -21,7 +31,7 @@ import type {
   SubmitRampCaptureResponse,
 } from "./ramp.types.js";
 
-const RAMP_POST_STATUSES = new Set(["ready", "posted"]);
+const RAMP_POST_STATUSES = new Set(["ready", "posted", "care_sent", "sent"]);
 const RAMP_QUEUE_STATUSES = new Set(["pending", "generating", "processing", "ready", "failed"]);
 const activeGenerations = new Set<string>();
 
@@ -191,6 +201,7 @@ async function storeSharedSelfieImpl(body: StoreSharedSelfieRequest) {
 
 function normalizeCaptureType(raw?: string): string {
   const v = String(raw || "photo").trim().toLowerCase();
+  if (v === "selfie") return "upload";
   if (v === "upload" || v === "reel" || v === "photo") return v;
   return "photo";
 }
@@ -225,7 +236,11 @@ async function startStylistPostImpl(
     RAMP_DEMO_PROFILE.stylistName;
   const products = normalizeProducts(body.products);
   const captureType = normalizeCaptureType(body.captureType);
-  const postStyle = String(body.postStyle || "new_look").trim().toLowerCase() || "new_look";
+  const postStyle = normalizeRampPostStylePreset(body.postStyle);
+  const capturePath = String(body.capturePath || "stylist_path").trim() || "stylist_path";
+  const visualDirection = String(body.visualDirection || "raw").trim() || "raw";
+  const imageEdit = String(body.imageEdit || "hair_color_pop").trim() || "hair_color_pop";
+  const brandLayer = String(body.brandLayer || "active_brand").trim() || "active_brand";
   const tags = normalizeTags(body.tags);
   const links = normalizeLinks(body.links);
   const sourceType = `ramp_${captureType}`;
@@ -242,6 +257,10 @@ async function startStylistPostImpl(
     appointmentId: body.appointmentId ?? null,
     postStyle,
     captureType,
+    capturePath,
+    visualDirection,
+    imageEdit,
+    brandLayer,
     tags,
     links,
   };
@@ -314,6 +333,26 @@ async function updatePostStatus(
   return rampMemoryStore.getPost(token);
 }
 
+async function readBoltStartPromptMeta(
+  token: string,
+): Promise<Record<string, unknown> | null> {
+  const prisma = getPrisma();
+  if (prisma) {
+    try {
+      const visit = await prisma.rampVisit.findFirst({
+        where: { token, eventType: "ramp_bolt_start" },
+        orderBy: { createdAt: "desc" },
+      });
+      if (visit?.metadataJson && typeof visit.metadataJson === "object") {
+        return visit.metadataJson as Record<string, unknown>;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return rampMemoryStore.getVisitMetadata(token, "ramp_bolt_start");
+}
+
 async function runGenerationJob(req: Request, token: string, rawMediaUrl: string) {
   if (activeGenerations.has(token)) return;
   activeGenerations.add(token);
@@ -348,7 +387,10 @@ async function runGenerationJob(req: Request, token: string, rawMediaUrl: string
       postRow = mem;
     }
 
-    const postStyle = String(postRow.sourceType || "ramp_photo").replace(/^ramp_/, "") || "new_look";
+    const postStyle = normalizeRampPostStylePreset(
+      String(postRow.sourceType || "ramp_photo").replace(/^ramp_/, "") || "curiosity",
+    );
+    const promptMeta = (await readBoltStartPromptMeta(token)) || {};
     const { imageUrl, mock } = await generateBrandedRampImage({
       sourceImageUrl: rawMediaUrl,
       postStyle,
@@ -356,6 +398,12 @@ async function runGenerationJob(req: Request, token: string, rawMediaUrl: string
       stylistName: postRow.stylistName,
       brandSlug: postRow.brandSlug,
       reqOrigin: requestOrigin(req),
+      capturePath: typeof promptMeta.capturePath === "string" ? promptMeta.capturePath : undefined,
+      visualDirection:
+        typeof promptMeta.visualDirection === "string" ? promptMeta.visualDirection : undefined,
+      imageEdit: typeof promptMeta.imageEdit === "string" ? promptMeta.imageEdit : undefined,
+      brandLayer: typeof promptMeta.brandLayer === "string" ? promptMeta.brandLayer : undefined,
+      captureType: typeof promptMeta.captureType === "string" ? promptMeta.captureType : undefined,
     });
 
     const caption =
@@ -466,6 +514,150 @@ async function getPostStatusImpl(req: Request, token: string): Promise<RampDemoP
   return dtoFromMemory(rampMemoryStore.getPost(t));
 }
 
+function resolveCareCardImageUrl(req: Request): string {
+  const env = process.env.RAMP_CARE_CARD_URL?.trim();
+  if (env) return env;
+  if (RAMP_DEMO_PROFILE.careCardHeroUrl) return RAMP_DEMO_PROFILE.careCardHeroUrl;
+  return `${rampPublicBaseUrl(req).replace(/\/$/, "")}/salonx.png`;
+}
+
+async function fireClientCareCardImpl(
+  req: Request,
+  body: FireClientCareCardRequest,
+): Promise<FireClientCareCardResponse> {
+  const recipientPhone = normalizePhone(String(body.recipientPhone || "").trim());
+  if (!recipientPhone) throw new Error("Client phone number is required");
+
+  const token = mintRampToken();
+  const brandSlug =
+    String(body.brandSlug || RAMP_DEMO_PROFILE.brandSlug).trim() || RAMP_DEMO_PROFILE.brandSlug;
+  const recipientName = String(body.recipientName || "Guest").trim() || "Guest";
+  const stylistName =
+    String(body.stylistName || RAMP_DEMO_PROFILE.stylistName).trim() ||
+    RAMP_DEMO_PROFILE.stylistName;
+  const products = normalizeProducts(body.products);
+  const careCardUrl = resolveCareCardImageUrl(req);
+  let landingUrl = rampLandingUrl(req, token);
+  let caption = buildClientCareSmsBody({ recipientName, stylistName, landingUrl });
+  let mmsMediaUrl = careCardUrl;
+
+  const linkedRampToken = String(body.rampToken || "").trim();
+  if (linkedRampToken) {
+    const rampPost = await getPostStatusImpl(req, linkedRampToken);
+    if (
+      rampPost &&
+      normalizeStatus(rampPost.status) === "ready" &&
+      rampPost.compositeUrl
+    ) {
+      landingUrl = rampLandingUrl(req, linkedRampToken);
+      caption = buildRampShareSmsBody({
+        caption: rampPost.caption || "",
+      });
+      mmsMediaUrl = rampPost.compositeUrl;
+    }
+  }
+
+  const visitMeta = {
+    appointmentId: body.appointmentId ?? null,
+    source: "cash_checkout",
+  };
+
+  const prisma = getPrisma();
+  if (prisma) {
+    try {
+      await prisma.rampDemoPost.create({
+        data: {
+          token,
+          brandSlug,
+          recipientPhone,
+          recipientName,
+          stylistName,
+          products,
+          status: "ready",
+          sourceType: "client_care",
+          careCardUrl,
+          compositeUrl: careCardUrl,
+          caption,
+        },
+      });
+      await recordVisitDb(token, "client_care_created", visitMeta);
+    } catch {
+      rampMemoryStore.createPost({
+        token,
+        brandSlug,
+        recipientPhone,
+        recipientName,
+        stylistName,
+        products,
+        status: "ready",
+        sourceType: "client_care",
+        careCardUrl,
+        compositeUrl: careCardUrl,
+        caption,
+        landingUrl,
+      });
+      rampMemoryStore.recordVisit(token, "client_care_created", visitMeta);
+    }
+  } else {
+    rampMemoryStore.createPost({
+      token,
+      brandSlug,
+      recipientPhone,
+      recipientName,
+      stylistName,
+      products,
+      status: "ready",
+      sourceType: "client_care",
+      careCardUrl,
+      compositeUrl: careCardUrl,
+      caption,
+      landingUrl,
+    });
+    rampMemoryStore.recordVisit(token, "client_care_created", visitMeta);
+  }
+
+  const demoOnly = body.demoOnly === true;
+  if (demoOnly) {
+    await recordVisitDb(token, "client_care_ready", {
+      ...visitMeta,
+      transport: "demo_manual",
+    });
+    return {
+      ok: true,
+      token,
+      status: "card_ready",
+      landingUrl,
+      sms: {
+        sent: false,
+        mock: true,
+        provider: "demo_manual",
+      },
+    };
+  }
+
+  const sms = await sendRampSms({
+    to: recipientPhone,
+    body: caption,
+    mediaUrl: mmsMediaUrl,
+  });
+
+  await updatePostStatus(token, { status: "care_sent" });
+  await recordVisitDb(token, "client_care_sent", { provider: sms.provider, mock: sms.mock });
+
+  return {
+    ok: true,
+    token,
+    status: "care_sent",
+    landingUrl,
+    sms: {
+      sent: sms.sent,
+      mock: sms.mock,
+      provider: sms.provider,
+      sid: sms.sid,
+    },
+  };
+}
+
 async function sendRampPostSmsImpl(req: Request, token: string): Promise<SendRampSmsResponse> {
   const t = String(token || "").trim();
   if (!t) throw new Error("token is required");
@@ -482,7 +674,6 @@ async function sendRampPostSmsImpl(req: Request, token: string): Promise<SendRam
   const landingUrl = rampLandingUrl(req, t);
   const body = buildRampShareSmsBody({
     caption: post.caption || "",
-    landingUrl,
   });
 
   const sms = await sendRampSms({
@@ -536,6 +727,8 @@ export const rampService = {
   getPostStatus: getPostStatusImpl,
 
   sendRampPostSms: sendRampPostSmsImpl,
+
+  fireClientCareCard: fireClientCareCardImpl,
 
   startStylistPost: startStylistPostImpl,
 

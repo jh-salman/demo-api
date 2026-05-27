@@ -45,6 +45,10 @@ export type StartStylistPostRequest = {
   links?: string[];
   captureType?: string;
   brandSlug?: string;
+  capturePath?: string;
+  visualDirection?: string;
+  imageEdit?: string;
+  brandLayer?: string;
 };
 
 export type StartStylistPostResponse = {
@@ -69,6 +73,32 @@ export type SendRampSmsResponse = {
   ok: true;
   token: string;
   status: "sent";
+  sms: {
+    sent: boolean;
+    mock: boolean;
+    provider?: string;
+    sid?: string;
+  };
+};
+
+export type FireClientCareCardRequest = {
+  recipientPhone: string;
+  recipientName?: string;
+  stylistName?: string;
+  products?: string[];
+  appointmentId?: string | null;
+  brandSlug?: string;
+  /** Skip carrier SMS — return card URL for native composer (demo backup plan). */
+  demoOnly?: boolean;
+  /** Link cash checkout to an in-flight RAMP post (composite MMS when ready). */
+  rampToken?: string;
+};
+
+export type FireClientCareCardResponse = {
+  ok: true;
+  token: string;
+  status: "care_sent" | "card_ready";
+  landingUrl: string;
   sms: {
     sent: boolean;
     mock: boolean;

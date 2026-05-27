@@ -1,29 +1,46 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  buildRampAiPrompt,
+  normalizeRampBrandLayer,
+  normalizeRampCapturePath,
+  normalizeRampImageEdit,
+  normalizeRampPostStylePreset,
+  normalizeRampVisualDirection,
+  type RampPromptConfig,
+} from "./ramp-ai-prompts.js";
+
 export function isOpenAiMockMode(): boolean {
   const raw = process.env.OPENAI_API_KEY?.trim();
   return !raw;
 }
 
-function buildGenerationPrompt(input: {
+export type RampGenerationInput = {
+  sourceImageUrl: string;
   postStyle: string;
   recipientName: string;
   stylistName: string;
   brandSlug: string;
-}): string {
-  const style = String(input.postStyle || "new_look").replace(/_/g, " ");
-  const client = String(input.recipientName || "Guest").trim() || "Guest";
-  const stylist = String(input.stylistName || "Stylist").trim() || "Stylist";
-  const brand = String(input.brandSlug || "salon").replace(/-/g, " ");
-  return [
-    `Create a premium salon social-media card for ${brand}.`,
-    `Style: ${style}.`,
-    `Celebrate ${client}'s new look by stylist ${stylist}.`,
-    "Keep the person's likeness from the reference photo.",
-    "Add subtle luxury branding, clean typography, and share-ready composition.",
-    "No watermarks. Portrait orientation.",
-  ].join(" ");
+  reqOrigin?: string;
+  capturePath?: string;
+  visualDirection?: string;
+  imageEdit?: string;
+  brandLayer?: string;
+  captureType?: string;
+};
+
+function toPromptConfig(input: RampGenerationInput): RampPromptConfig {
+  return {
+    capturePath: normalizeRampCapturePath(input.capturePath, input.captureType),
+    postStyle: normalizeRampPostStylePreset(input.postStyle),
+    visualDirection: normalizeRampVisualDirection(input.visualDirection),
+    imageEdit: normalizeRampImageEdit(input.imageEdit),
+    brandLayer: normalizeRampBrandLayer(input.brandLayer),
+    brandSlug: input.brandSlug,
+    recipientName: input.recipientName,
+    stylistName: input.stylistName,
+  };
 }
 
 async function fetchImageBuffer(url: string): Promise<Buffer> {
@@ -85,21 +102,16 @@ async function uploadGeneratedBuffer(
   return `${origin.replace(/\/$/, "")}/uploads/ramp/${filename}`;
 }
 
-async function generateWithOpenAi(input: {
-  sourceImageUrl: string;
-  postStyle: string;
-  recipientName: string;
-  stylistName: string;
-  brandSlug: string;
-  reqOrigin?: string;
-}): Promise<{ imageUrl: string; mock: boolean }> {
+async function generateWithOpenAi(
+  input: RampGenerationInput,
+): Promise<{ imageUrl: string; mock: boolean }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     return { imageUrl: input.sourceImageUrl, mock: true };
   }
 
   const model = process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1";
-  const prompt = buildGenerationPrompt(input);
+  const prompt = buildRampAiPrompt(toPromptConfig(input));
   const sourceBuffer = await fetchImageBuffer(input.sourceImageUrl);
   const form = new FormData();
   form.append("model", model);
@@ -135,14 +147,9 @@ async function generateWithOpenAi(input: {
   throw new Error("OpenAI returned no image data");
 }
 
-export async function generateBrandedRampImage(input: {
-  sourceImageUrl: string;
-  postStyle: string;
-  recipientName: string;
-  stylistName: string;
-  brandSlug: string;
-  reqOrigin?: string;
-}): Promise<{ imageUrl: string; mock: boolean }> {
+export async function generateBrandedRampImage(
+  input: RampGenerationInput,
+): Promise<{ imageUrl: string; mock: boolean }> {
   if (isOpenAiMockMode()) {
     return { imageUrl: input.sourceImageUrl, mock: true };
   }

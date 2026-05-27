@@ -9,11 +9,13 @@ export const RAMP_DEMO_PROFILE = {
 } as const;
 
 const POST_STYLE_HEADLINE: Record<string, string> = {
-  professional: "Professional finish",
   curiosity: "Curiosity look",
+  transformation: "Transformation",
   event: RAMP_DEMO_PROFILE.eventLabel,
   brand: "Brand spotlight",
-  new_look: "New look",
+  client_reaction: "Client reaction",
+  new_look: "Transformation",
+  professional: "Professional finish",
 };
 
 export function buildDemoCaption(input: {
