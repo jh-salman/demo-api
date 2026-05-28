@@ -671,7 +671,6 @@ async function sendRampPostSmsImpl(req: Request, token: string): Promise<SendRam
     throw new Error("Client phone number is required to send SMS");
   }
 
-  const landingUrl = rampLandingUrl(req, t);
   const body = buildRampShareSmsBody({
     caption: post.caption || "",
   });
