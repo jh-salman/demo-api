@@ -42,21 +42,39 @@ export type RampPromptConfig = {
 const NEVER_GENERATE = [
   "Do NOT make it look corporate, templated, AI-generated, beauty-ad generic, CRM-generated, or stock photography.",
   "Never generate over-polished beauty ads or plastic skin.",
+  "Do NOT distort, swap, beautify, or age the subjects' faces — keep their exact likeness from the reference photo.",
+  "Do NOT add extra people, extra fingers, or warped hands.",
+  "Keep all rendered text clean, bold, and spelled correctly — no gibberish lettering.",
+  "No external watermarks, no copyright marks, no stock-site logos.",
 ].join(" ");
 
 const CORE_VISUAL_DNA =
-  "Core visual DNA: black, gold, white, gritty editorial, creator culture, backstage energy, premium mobile aesthetic.";
+  "Core visual DNA: black gritty textured background, electric neon accent (Danger Jones green by default; use the active brand's signature accent otherwise), white + neon hand-painted brush typography, raw creator-culture energy, backstage / show-floor buzz, premium social-native mobile aesthetic.";
+
+/**
+ * RAMP POST poster system — the exact design language to replicate:
+ * grunge brush headline hook, framed/torn subject photo with a bold hair-color
+ * pop, lightning-bolt + arrow accents, vertical brand wordmark, and a neon
+ * "comment below" call-to-action banner. Vertical 9:16 social poster.
+ */
+const RAMP_POSTER_SYSTEM = [
+  "OUTPUT FORMAT: a finished vertical 9:16 social-media POSTER (story format), not a plain photo. Treat the uploaded image as the hero photo placed inside a designed graphic layout.",
+  "BACKGROUND: deep black with gritty grunge texture, faint distressed paper/scratches, subtle dark foliage or smoke shadows. High contrast.",
+  "HERO PHOTO: place the uploaded subjects inside a slightly rotated photo frame with rough torn / taped edges (polaroid-meets-poster). Keep faces sharp and recognizable. Apply a bold, vivid HAIR-COLOR POP (electric neon green by default, or the active brand accent) onto the relevant subject's hair so the transformation reads instantly — keep it believable on the hair only.",
+  "HEADLINE TYPOGRAPHY: large hand-painted grunge BRUSH lettering across the top, mixing bright white and the neon accent. Energetic, slightly messy, layered strokes. The headline is a curiosity HOOK question (see TEXT TO RENDER).",
+  "GRAPHIC ELEMENTS: scatter neon lightning-bolt marks, hand-drawn arrows pointing at the photo, small '[LIVE]' tag, a 'RAMP POST IT' badge, and short kicker phrases like 'NEW LOOK / NEW ENERGY' and 'WHEN CULTURE SHOWS UP, EVERYTHING CHANGES.'",
+  "BRAND SIDEBAR: the active brand wordmark set vertically down one edge in faded tonal type (e.g. 'DANGER JONES').",
+  "CTA BANNER: a torn neon accent banner near the bottom reading the comment call-to-action, with a tiny footer line under it (see TEXT TO RENDER).",
+].join("\n");
 
 const BASE_PRESETS: Record<RampPostStylePreset, string> = {
-  curiosity: `Create a vertical social-media beauty poster using the uploaded image as the primary reference.
-Preserve the subject's facial identity and hairstyle integrity.
-The image should feel: social-native, emotionally magnetic, creator-authored, backstage beauty culture, slightly raw, premium but not over-polished.
-Lighting should feel dramatic and real, not studio-perfect.
-Emphasize: hair tone, texture, movement, confidence, transformation energy.
-Use black, gold, white, and active Danger Jones accent colors.
-Add subtle editorial contrast and cinematic depth.
-The composition should feel like: "something important just happened."
-Target emotion: "I need to know who did this."`,
+  curiosity: `Create a vertical social-media CURIOSITY-HOOK poster using the uploaded image as the hero photo inside a designed graphic layout (RAMP POST style).
+Preserve every subject's facial identity exactly; only the hair gets the bold color pop.
+The poster should feel: social-native, gossip-worthy, creator-authored, backstage beauty culture, raw and loud, premium but not over-polished.
+The big grunge brush headline asks a playful "did this just happen?" question that makes people stop scrolling.
+Emphasize: the dramatic hair-color transformation, energy, and "wait, who did this?" intrigue.
+Composition should feel like: "something just went down at the show floor."
+Target emotion: "I need to know who did this — and comment."`,
 
   transformation: `Create a transformation-focused social-media poster using the uploaded salon image.
 The image should feel: elevated, emotionally confident, beauty-culture driven, transformation-focused, stylist-authored.
@@ -183,17 +201,33 @@ export function buildRampAiPrompt(input: RampPromptConfig): string {
   const client = String(input.recipientName || "Guest").trim() || "Guest";
   const stylist = String(input.stylistName || "Stylist").trim() || "Stylist";
 
+  const brandWordmark = brand.toUpperCase();
+  const headline = `Did ${client} get their hair done by ${stylist}?`;
+
+  const textToRender = [
+    "TEXT TO RENDER (spell exactly, bold and legible):",
+    `• HEADLINE (grunge brush, white + neon): "${headline}"`,
+    `• KICKER near headline: "NEW LOOK / NEW ENERGY"`,
+    `• TAGS: "[LIVE]"  and  "RAMP POST IT NOW"`,
+    `• SIDE NOTE: "WHEN CULTURE SHOWS UP, EVERYTHING CHANGES."`,
+    `• VERTICAL BRAND WORDMARK down one edge: "${brandWordmark}"`,
+    `• CTA BANNER (neon, torn): "WHAT DO YOU THINK?  ⚡  COMMENT BELOW"`,
+    `• FOOTER LINE under banner: "MORE ALL WEEKEND."`,
+  ].join("\n");
+
   return [
     CAPTURE_PATH[input.capturePath],
     BASE_PRESETS[input.postStyle],
+    RAMP_POSTER_SYSTEM,
     VISUAL_DIRECTION[input.visualDirection],
     IMAGE_EDIT[input.imageEdit],
     BRAND_LAYER[input.brandLayer],
     CORE_VISUAL_DNA,
-    `Subject context: celebrate ${client}'s look by stylist ${stylist} for ${brand}.`,
-    "Preserve likeness from the reference photo. Portrait orientation. Target feed 1080x1350 or story 1080x1920.",
-    "Target emotion: the user should think \"I need to share this.\"",
+    `Subject context: celebrate ${client}'s new look by stylist ${stylist} for ${brand}.`,
+    textToRender,
+    "Preserve every face's likeness from the reference photo. Vertical portrait poster, 1024x1536 (story 9:16).",
+    "Target emotion: the user should think \"I need to share this and comment.\"",
     NEVER_GENERATE,
-    "The AI should generate images that feel creator-authored, socially valuable, emotionally alive, and culturally relevant.",
+    "The AI should generate a finished, post-ready RAMP poster that feels creator-authored, socially valuable, emotionally alive, and culturally relevant.",
   ].join("\n\n");
 }

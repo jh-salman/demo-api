@@ -63,10 +63,32 @@ async function salesmsgRequest<T extends SalesmsgJson>(
       (typeof json.message === "string" && json.message) ||
       (typeof json.error === "string" && json.error) ||
       `Salesmsg request failed (${res.status})`;
-    throw new Error(detail);
+    const err = new SalesmsgError(detail, res.status, json);
+    throw err;
   }
 
   return json;
+}
+
+/** Error that preserves the parsed Salesmsg response body (e.g. validation `contact_id`). */
+class SalesmsgError extends Error {
+  status: number;
+  body: SalesmsgJson;
+  constructor(message: string, status: number, body: SalesmsgJson) {
+    super(message);
+    this.name = "SalesmsgError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+/** Pull an existing contact id out of a "contact already exists" validation body. */
+function existingContactIdFromError(err: unknown): number | null {
+  if (!(err instanceof SalesmsgError)) return null;
+  const raw = (err.body as { contact_id?: unknown })?.contact_id;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const id = Number(value);
+  return Number.isFinite(id) && id > 0 ? id : null;
 }
 
 async function findContactByPhone(phone: string): Promise<{ id: number } | null> {
@@ -74,10 +96,19 @@ async function findContactByPhone(phone: string): Promise<{ id: number } | null>
   if (!normalized) return null;
 
   const search = encodeURIComponent(normalized);
-  const list = await salesmsgRequest<{ data?: Array<{ id?: number; number?: string }> }>(
-    `/contacts?search=${search}&length=5&page=1`,
-    { method: "GET" },
-  );
+  let list: { data?: Array<{ id?: number; number?: string }> };
+  try {
+    list = await salesmsgRequest<{ data?: Array<{ id?: number; number?: string }> }>(
+      `/contacts?search=${search}&length=5&page=1`,
+      { method: "GET" },
+    );
+  } catch (err) {
+    console.warn("[ramp:salesmsg] contact search failed", {
+      phone: normalized,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 
   const rows = Array.isArray(list.data) ? list.data : [];
   const exact = rows.find(
@@ -91,12 +122,30 @@ async function findContactByPhone(phone: string): Promise<{ id: number } | null>
 
 async function createContact(phone: string): Promise<{ id: number }> {
   const normalized = normalizePhone(phone);
-  const created = await salesmsgRequest<{ id?: number }>("/contacts", {
-    method: "POST",
-    body: JSON.stringify({ number: normalized }),
-  });
-  if (!created.id) throw new Error("Salesmsg contact create returned no id");
-  return { id: Number(created.id) };
+  try {
+    // Salesmsg returns ContactResource directly, but some tenants wrap it in `data`.
+    const created = await salesmsgRequest<{ id?: number; data?: { id?: number } }>(
+      "/contacts",
+      {
+        method: "POST",
+        body: JSON.stringify({ number: normalized }),
+      },
+    );
+    const id = created.id ?? created.data?.id;
+    if (!id) {
+      console.warn("[ramp:salesmsg] contact create returned no id", {
+        phone: normalized,
+        response: created,
+      });
+      throw new Error("Salesmsg contact create returned no id");
+    }
+    return { id: Number(id) };
+  } catch (err) {
+    // "A contact already exists for this number" → body carries the existing id.
+    const existingId = existingContactIdFromError(err);
+    if (existingId) return { id: existingId };
+    throw err;
+  }
 }
 
 async function openConversation(contactId: number): Promise<{ id: number }> {
@@ -124,11 +173,24 @@ export async function sendSalesmsgMessage(input: {
 
   let contact = await findContactByPhone(to);
   if (!contact) {
+    let createError: unknown = null;
     try {
       contact = await createContact(to);
-    } catch {
+    } catch (err) {
+      createError = err;
       contact = await findContactByPhone(to);
-      if (!contact) throw new Error("Salesmsg could not find or create contact");
+    }
+    if (!contact) {
+      const detail =
+        createError instanceof Error ? createError.message : String(createError || "");
+      console.error("[ramp:salesmsg] could not resolve contact", {
+        to,
+        createError: detail,
+      });
+      throw new Error(
+        `Salesmsg could not find or create contact for ${to}` +
+          (detail ? ` — ${detail}` : ""),
+      );
     }
   }
 
@@ -141,7 +203,7 @@ export async function sendSalesmsgMessage(input: {
     params.append("media_url[][url]", mediaUrl);
   }
 
-  const sent = await salesmsgRequest<{ id?: number; type?: string; media?: unknown[] }>(
+  const sent = await salesmsgRequest<SalesmsgMessage>(
     `/messages/${conversation.id}?${params.toString()}`,
     { method: "POST" },
   );
@@ -155,8 +217,132 @@ export async function sendSalesmsgMessage(input: {
     });
   }
 
+  console.log("[ramp:salesmsg] message accepted", {
+    conversationId: conversation.id,
+    messageId: sent.id,
+    type: sent.type,
+    initialStatus: sent.status,
+    mmsStatus: sent.mms_status,
+    hasMedia: Array.isArray(sent.media) && sent.media.length > 0,
+  });
+
+  // Fire-and-forget delivery poll — surfaces trial-block vs real-block in logs
+  // without blocking the API response.
+  if (sent.id != null) {
+    void pollSalesmsgDeliveryStatus(conversation.id, Number(sent.id)).catch(
+      (err) => {
+        console.warn("[ramp:salesmsg] delivery poll error", {
+          conversationId: conversation.id,
+          messageId: sent.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      },
+    );
+  }
+
   return {
     messageId: sent.id != null ? String(sent.id) : undefined,
     conversationId: conversation.id,
   };
+}
+
+type SalesmsgMessage = {
+  id?: number;
+  type?: string;
+  status?: string;
+  mms_status?: string;
+  sent_at?: string | null;
+  delivered_at?: string | null;
+  failed_at?: string | null;
+  failed_reason?: string | null;
+  media?: unknown[];
+};
+
+const TERMINAL_STATUSES = new Set(["delivered", "failed", "undelivered"]);
+
+/**
+ * Poll Salesmsg for the message's delivery status after send and log the
+ * outcome to the terminal. Distinguishes a trial/account block (status stuck on
+ * `queued`/`sent` or `failed` with a carrier reason) from a real delivery.
+ */
+async function pollSalesmsgDeliveryStatus(
+  conversationId: number,
+  messageId: number,
+  attempts = 6,
+  intervalMs = 5000,
+): Promise<void> {
+  let lastStatus = "";
+  for (let i = 0; i < attempts; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+
+    let rows: SalesmsgMessage[] = [];
+    try {
+      const raw = (await salesmsgRequest<SalesmsgJson>(
+        `/messages/${conversationId}?limit=20`,
+        { method: "GET" },
+      )) as unknown;
+      const data = (raw as { data?: unknown })?.data;
+      rows = Array.isArray(raw)
+        ? (raw as SalesmsgMessage[])
+        : Array.isArray(data)
+          ? (data as SalesmsgMessage[])
+          : [];
+    } catch (err) {
+      console.warn("[ramp:salesmsg] status fetch failed", {
+        conversationId,
+        messageId,
+        attempt: i + 1,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      continue;
+    }
+
+    const msg = rows.find((row) => Number(row.id) === messageId);
+    if (!msg) continue;
+
+    const status = String(msg.status || "").toLowerCase();
+    if (status && status !== lastStatus) {
+      lastStatus = status;
+      console.log("[ramp:salesmsg] delivery status", {
+        conversationId,
+        messageId,
+        attempt: i + 1,
+        status: msg.status,
+        mmsStatus: msg.mms_status,
+        sentAt: msg.sent_at,
+        deliveredAt: msg.delivered_at,
+        failedAt: msg.failed_at,
+        failedReason: msg.failed_reason,
+      });
+    }
+
+    if (TERMINAL_STATUSES.has(status)) {
+      if (status === "delivered") {
+        console.log("[ramp:salesmsg] ✅ DELIVERED to carrier", {
+          conversationId,
+          messageId,
+          deliveredAt: msg.delivered_at,
+        });
+      } else {
+        console.warn(
+          "[ramp:salesmsg] ❌ NOT DELIVERED — likely trial/account/A2P block",
+          {
+            conversationId,
+            messageId,
+            status: msg.status,
+            failedReason:
+              msg.failed_reason || "(no reason from Salesmsg — check trial limits / number registration)",
+          },
+        );
+      }
+      return;
+    }
+  }
+
+  console.warn("[ramp:salesmsg] ⏳ no terminal delivery status after polling", {
+    conversationId,
+    messageId,
+    lastStatus: lastStatus || "(unknown)",
+    note: "stuck on queued/sent usually = trial mode or unregistered number (A2P 10DLC)",
+  });
 }

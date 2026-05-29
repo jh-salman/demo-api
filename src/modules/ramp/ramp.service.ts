@@ -501,13 +501,15 @@ async function getPostStatusImpl(req: Request, token: string): Promise<RampDemoP
   if (prisma) {
     try {
       const row = await prisma.rampDemoPost.findUnique({ where: { token: t } });
-      if (!row) return null;
-      return dtoFromRow({
-        ...row,
-        landingUrl: rampLandingUrl(req, row.token),
-      });
+      if (row) {
+        return dtoFromRow({
+          ...row,
+          landingUrl: rampLandingUrl(req, row.token),
+        });
+      }
+      // Not in DB — fall through to the memory store (created during outage).
     } catch {
-      /* fall through */
+      /* DB unreachable — fall through to memory store */
     }
   }
 
