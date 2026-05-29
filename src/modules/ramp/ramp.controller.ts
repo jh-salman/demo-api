@@ -83,6 +83,32 @@ export const rampController = {
     res.json({ ok: true, post });
   }),
 
+  regenerate: asyncHandler(async (req: Request, res: Response) => {
+    const token = String(req.params.token || "").trim();
+    if (!token) throw new HttpError(400, "token required");
+    const body = (req.body && typeof req.body === "object" ? req.body : {}) as {
+      note?: string;
+      visualDirection?: string;
+      imageEdit?: string;
+    };
+    try {
+      res.json(
+        await rampService.regenerate(req, token, {
+          note: typeof body.note === "string" ? body.note : undefined,
+          visualDirection:
+            typeof body.visualDirection === "string" ? body.visualDirection : undefined,
+          imageEdit: typeof body.imageEdit === "string" ? body.imageEdit : undefined,
+        }),
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "regenerate failed";
+      if (msg.includes("Unknown RAMP") || msg.includes("No source capture")) {
+        throw new HttpError(400, msg);
+      }
+      throw new HttpError(500, msg);
+    }
+  }),
+
   sendSms: asyncHandler(async (req: Request, res: Response) => {
     const token = String(req.params.token || "").trim();
     if (!token) throw new HttpError(400, "token required");

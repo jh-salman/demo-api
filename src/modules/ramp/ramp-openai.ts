@@ -28,6 +28,8 @@ export type RampGenerationInput = {
   imageEdit?: string;
   brandLayer?: string;
   captureType?: string;
+  /** Optional freeform edit instruction supplied on a regenerate request. */
+  extraNote?: string;
 };
 
 function toPromptConfig(input: RampGenerationInput): RampPromptConfig {
@@ -40,6 +42,7 @@ function toPromptConfig(input: RampGenerationInput): RampPromptConfig {
     brandSlug: input.brandSlug,
     recipientName: input.recipientName,
     stylistName: input.stylistName,
+    extraNote: input.extraNote,
   };
 }
 

@@ -37,6 +37,8 @@ export type RampPromptConfig = {
   brandSlug: string;
   recipientName: string;
   stylistName: string;
+  /** Optional freeform edit instruction supplied on a regenerate request. */
+  extraNote?: string;
 };
 
 const NEVER_GENERATE = [
@@ -202,7 +204,12 @@ export function buildRampAiPrompt(input: RampPromptConfig): string {
   const stylist = String(input.stylistName || "Stylist").trim() || "Stylist";
 
   const brandWordmark = brand.toUpperCase();
-  const headline = `Did ${client} get their hair done by ${stylist}?`;
+  const headline = `Did ${client} get his hair done by ${stylist}?`;
+
+  const note = String(input.extraNote || "").trim();
+  const extraDirection = note
+    ? `PRIORITY EDIT INSTRUCTION (from the stylist — apply this above all stylistic defaults, but still preserve every face's likeness and keep all text spelled correctly): ${note}`
+    : "";
 
   const textToRender = [
     "TEXT TO RENDER (spell exactly, bold and legible):",
@@ -223,6 +230,7 @@ export function buildRampAiPrompt(input: RampPromptConfig): string {
     IMAGE_EDIT[input.imageEdit],
     BRAND_LAYER[input.brandLayer],
     CORE_VISUAL_DNA,
+    ...(extraDirection ? [extraDirection] : []),
     `Subject context: celebrate ${client}'s new look by stylist ${stylist} for ${brand}.`,
     textToRender,
     "Preserve every face's likeness from the reference photo. Vertical portrait poster, 1024x1536 (story 9:16).",

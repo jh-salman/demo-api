@@ -32,6 +32,8 @@ export type StoreSharedSelfieRequest = {
   mediaUrl: string;
   phone?: string;
   source?: string;
+  /** Optional AI edit note when re-queuing generation (regenerate / submit-capture). */
+  note?: string;
 };
 
 export type StartStylistPostRequest = {

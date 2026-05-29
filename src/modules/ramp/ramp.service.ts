@@ -353,7 +353,18 @@ async function readBoltStartPromptMeta(
   return rampMemoryStore.getVisitMetadata(token, "ramp_bolt_start");
 }
 
-async function runGenerationJob(req: Request, token: string, rawMediaUrl: string) {
+type RampGenerationOverrides = {
+  visualDirection?: string;
+  imageEdit?: string;
+  extraNote?: string;
+};
+
+async function runGenerationJob(
+  req: Request,
+  token: string,
+  rawMediaUrl: string,
+  overrides?: RampGenerationOverrides,
+) {
   if (activeGenerations.has(token)) return;
   activeGenerations.add(token);
   try {
@@ -400,10 +411,14 @@ async function runGenerationJob(req: Request, token: string, rawMediaUrl: string
       reqOrigin: requestOrigin(req),
       capturePath: typeof promptMeta.capturePath === "string" ? promptMeta.capturePath : undefined,
       visualDirection:
-        typeof promptMeta.visualDirection === "string" ? promptMeta.visualDirection : undefined,
-      imageEdit: typeof promptMeta.imageEdit === "string" ? promptMeta.imageEdit : undefined,
+        overrides?.visualDirection ||
+        (typeof promptMeta.visualDirection === "string" ? promptMeta.visualDirection : undefined),
+      imageEdit:
+        overrides?.imageEdit ||
+        (typeof promptMeta.imageEdit === "string" ? promptMeta.imageEdit : undefined),
       brandLayer: typeof promptMeta.brandLayer === "string" ? promptMeta.brandLayer : undefined,
       captureType: typeof promptMeta.captureType === "string" ? promptMeta.captureType : undefined,
+      extraNote: overrides?.extraNote,
     });
 
     const caption =
@@ -465,8 +480,12 @@ async function submitRampCaptureImpl(
         recipientPhone: body.phone ? String(body.phone).trim() : post.recipientPhone,
       },
     });
-    await recordVisitDb(token, "ramp_capture_pending", { mediaUrl });
-    void runGenerationJob(req, token, mediaUrl);
+    const note = String(body.note || "").trim();
+    await recordVisitDb(token, note ? "ramp_regenerate" : "ramp_capture_pending", {
+      mediaUrl,
+      ...(note ? { note } : {}),
+    });
+    void runGenerationJob(req, token, mediaUrl, note ? { extraNote: note } : undefined);
     return { ok: true, token, status: "pending" };
   }
 
@@ -488,8 +507,12 @@ async function submitRampCaptureImpl(
     careCardUrl: mediaUrl,
     recipientPhone: body.phone ? String(body.phone).trim() : post.recipientPhone,
   });
-  rampMemoryStore.recordVisit(token, "ramp_capture_pending", { mediaUrl });
-  void runGenerationJob(req, token, mediaUrl);
+  const note = String(body.note || "").trim();
+  rampMemoryStore.recordVisit(token, note ? "ramp_regenerate" : "ramp_capture_pending", {
+    mediaUrl,
+    ...(note ? { note } : {}),
+  });
+  void runGenerationJob(req, token, mediaUrl, note ? { extraNote: note } : undefined);
   return { ok: true, token, status: "pending" };
 }
 
@@ -514,6 +537,39 @@ async function getPostStatusImpl(req: Request, token: string): Promise<RampDemoP
   }
 
   return dtoFromMemory(rampMemoryStore.getPost(t));
+}
+
+async function regenerateImpl(
+  req: Request,
+  token: string,
+  opts?: { note?: string; visualDirection?: string; imageEdit?: string },
+): Promise<{ ok: true; token: string; status: RampPostStatus }> {
+  const t = String(token || "").trim();
+  if (!t) throw new Error("token is required");
+
+  const post = await getPostStatusImpl(req, t);
+  if (!post) throw new Error("Unknown RAMP token");
+
+  const rawMediaUrl = String(post.careCardUrl || "").trim();
+  if (!rawMediaUrl) {
+    throw new Error("No source capture to regenerate from — re-run capture from Screen 2.");
+  }
+
+  const note = String(opts?.note || "").trim();
+  await updatePostStatus(t, { status: "pending", compositeUrl: null });
+  await recordVisitDb(t, "ramp_regenerate", {
+    note,
+    visualDirection: opts?.visualDirection || "",
+    imageEdit: opts?.imageEdit || "",
+  });
+
+  void runGenerationJob(req, t, rawMediaUrl, {
+    visualDirection: opts?.visualDirection,
+    imageEdit: opts?.imageEdit,
+    extraNote: note || undefined,
+  });
+
+  return { ok: true, token: t, status: "pending" };
 }
 
 function resolveCareCardImageUrl(req: Request): string {
@@ -726,6 +782,8 @@ export const rampService = {
   submitRampCapture: submitRampCaptureImpl,
 
   getPostStatus: getPostStatusImpl,
+
+  regenerate: regenerateImpl,
 
   sendRampPostSms: sendRampPostSmsImpl,
 
