@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   buildRampAiPrompt,
-  buildRampReferencePosterPrompt,
+  buildRampCachedCompositePrompt,
   normalizeRampBrandLayer,
   normalizeRampCapturePath,
   normalizeRampImageEdit,
@@ -31,7 +31,10 @@ export type RampGenerationInput = {
   captureType?: string;
   /** Optional freeform edit instruction supplied on a regenerate request. */
   extraNote?: string;
-  /** Reference poster URL (BEFORE BUILD) — enables 2-image KISS generation. */
+  backgroundPosterUrl?: string;
+  stylistStyleReferenceUrl?: string;
+  clientStyleReferenceUrl?: string;
+  /** @deprecated */
   referencePosterUrl?: string;
 };
 
@@ -162,23 +165,43 @@ async function generateWithOpenAi(
   }
 
   const model = process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1";
-  const referenceUrl = String(input.referencePosterUrl || "").trim();
+  const capturePath = normalizeRampCapturePath(input.capturePath, input.captureType);
+  const backgroundUrl = String(input.backgroundPosterUrl || "").trim();
+  const legacyReferenceUrl = String(input.referencePosterUrl || "").trim();
+  const stylistStyleUrl =
+    String(input.stylistStyleReferenceUrl || "").trim() || legacyReferenceUrl;
+  const clientStyleUrl = String(input.clientStyleReferenceUrl || "").trim();
+  const styleRefUrl = capturePath === "client_path" ? clientStyleUrl : stylistStyleUrl;
+
   const sourceBuffer = await fetchImageBuffer(input.sourceImageUrl);
   const imagePart = imagePartFromBuffer(sourceBuffer);
-  let referencePart: { blob: Blob; filename: string } | null = null;
-  if (referenceUrl) {
+
+  let backgroundPart: { blob: Blob; filename: string } | null = null;
+  let styleRefPart: { blob: Blob; filename: string } | null = null;
+
+  if (backgroundUrl) {
     try {
-      const refBuffer = await fetchImageBuffer(referenceUrl);
-      referencePart = imagePartFromBuffer(refBuffer);
+      const bgBuffer = await fetchImageBuffer(backgroundUrl);
+      backgroundPart = imagePartFromBuffer(bgBuffer);
     } catch (e) {
-      console.warn("[ramp:openai] reference poster fetch failed — prompt-only fallback", e);
+      console.warn("[ramp:openai] background poster fetch failed", e);
+    }
+  }
+  if (styleRefUrl) {
+    try {
+      const refBuffer = await fetchImageBuffer(styleRefUrl);
+      styleRefPart = imagePartFromBuffer(refBuffer);
+    } catch (e) {
+      console.warn("[ramp:openai] style reference fetch failed", e);
     }
   }
 
-  const prompt = referencePart
-    ? buildRampReferencePosterPrompt({
+  const useCachedComposite = Boolean(backgroundPart && styleRefPart);
+  const prompt = useCachedComposite
+    ? buildRampCachedCompositePrompt({
         recipientName: input.recipientName,
         stylistName: input.stylistName,
+        capturePath,
         extraNote: input.extraNote,
       })
     : buildRampAiPrompt(toPromptConfig(input));
@@ -192,8 +215,11 @@ async function generateWithOpenAi(
     form.append("prompt", prompt);
     form.append("size", "1024x1536");
     form.append("image[]", imagePart.blob, imagePart.filename);
-    if (referencePart) {
-      form.append("image[]", referencePart.blob, referencePart.filename);
+    if (backgroundPart) {
+      form.append("image[]", backgroundPart.blob, backgroundPart.filename);
+    }
+    if (styleRefPart) {
+      form.append("image[]", styleRefPart.blob, styleRefPart.filename);
     }
 
     const res = await fetch("https://api.openai.com/v1/images/edits", {

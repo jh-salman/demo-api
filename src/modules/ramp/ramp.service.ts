@@ -246,6 +246,9 @@ async function startStylistPostImpl(
   const imageEdit = String(body.imageEdit || "hair_color_pop").trim() || "hair_color_pop";
   const brandLayer = String(body.brandLayer || "active_brand").trim() || "active_brand";
   const referencePosterUrl = String(body.referencePosterUrl || "").trim();
+  const backgroundPosterUrl = String(body.backgroundPosterUrl || "").trim();
+  const stylistStyleReferenceUrl = String(body.stylistStyleReferenceUrl || "").trim();
+  const clientStyleReferenceUrl = String(body.clientStyleReferenceUrl || "").trim();
   const tags = normalizeTags(body.tags);
   const links = normalizeLinks(body.links);
   const sourceType = `ramp_${captureType}`;
@@ -267,6 +270,9 @@ async function startStylistPostImpl(
     imageEdit,
     brandLayer,
     referencePosterUrl: referencePosterUrl || undefined,
+    backgroundPosterUrl: backgroundPosterUrl || undefined,
+    stylistStyleReferenceUrl: stylistStyleReferenceUrl || undefined,
+    clientStyleReferenceUrl: clientStyleReferenceUrl || undefined,
     tags,
     links,
   };
@@ -476,6 +482,18 @@ async function runGenerationJob(
       referencePosterUrl:
         typeof promptMeta.referencePosterUrl === "string"
           ? promptMeta.referencePosterUrl
+          : undefined,
+      backgroundPosterUrl:
+        typeof promptMeta.backgroundPosterUrl === "string"
+          ? promptMeta.backgroundPosterUrl
+          : undefined,
+      stylistStyleReferenceUrl:
+        typeof promptMeta.stylistStyleReferenceUrl === "string"
+          ? promptMeta.stylistStyleReferenceUrl
+          : undefined,
+      clientStyleReferenceUrl:
+        typeof promptMeta.clientStyleReferenceUrl === "string"
+          ? promptMeta.clientStyleReferenceUrl
           : undefined,
     });
 

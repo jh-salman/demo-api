@@ -198,30 +198,35 @@ export function normalizeRampCapturePath(raw?: string, captureType?: string): Ra
   return "stylist_path";
 }
 
-/** KISS reference mode — selfie (image 1) + reference poster (image 2). */
-export function buildRampReferencePosterPrompt(input: {
+/** Cached composite — selfie + background + style reference (3 images). */
+export function buildRampCachedCompositePrompt(input: {
   recipientName: string;
   stylistName: string;
+  capturePath: RampCapturePath;
   extraNote?: string;
 }): string {
   const client = String(input.recipientName || "Guest").trim() || "Guest";
   const stylist = String(input.stylistName || "Stylist").trim() || "Stylist";
   const note = String(input.extraNote || "").trim();
+  const isClientPath = input.capturePath === "client_path";
   const extraDirection = note
-    ? `STYLIST NOTE (priority — still preserve faces and keep reference poster text legible): ${note}`
+    ? `STYLIST NOTE (priority — preserve selfie faces and keep background text legible): ${note}`
     : "";
+  const subjectPlacement = isClientPath
+    ? "Place the person from IMAGE 1 as the sole foreground subject on the background, matching scale, lighting, and pose energy from IMAGE 3."
+    : "Place the people from IMAGE 1 (duo selfie or solo stylist) as the foreground subjects on the background, matching duo or solo composition energy from IMAGE 3.";
 
   return [
-    "You receive TWO images:",
-    "• IMAGE 1 (first): live capture / selfie — preserve the subject's face exactly.",
-    "• IMAGE 2 (second): REFERENCE POSTER — mirror this layout, typography, colors, branding, text, and scene exactly.",
-    "PLACEMENT LOCK (critical): If IMAGE 2 shows two people, keep the LEFT person completely unchanged — especially the person wearing glasses on the left. Replace ONLY the RIGHT-side person with the subject from IMAGE 1. Do not swap both people. Do not alter the left person's face, hair, glasses, clothing, or pose.",
-    "If IMAGE 2 has only one person slot or no people, place the IMAGE 1 subject in the primary foreground person area on the right half of the poster, matching scale and lighting of the reference.",
-    "TASK: Composite the IMAGE 1 subject into the RIGHT person position while preserving every pixel of poster text, logos, handles, crate/scene, and the unchanged left subject from IMAGE 2.",
-    "Do NOT invent a new layout. Do NOT use generic beauty-ad or templated CRM styling. Match IMAGE 2 fidelity and finish quality.",
+    "You receive THREE images:",
+    "• IMAGE 1 (first): LIVE SELFIE / CAPTURE — the ONLY people allowed in the final poster. Preserve every face, hair, skin tone, glasses, clothing, and likeness exactly.",
+    "• IMAGE 2 (second): BACKGROUND POSTER — fixed scene, crate/set, logos, handles, and poster text. This layer has NO people in the output unless they are the same people from IMAGE 1.",
+    "• IMAGE 3 (third): STYLE REFERENCE — finish, layout rhythm, typography weight, color grading, and poster quality guide ONLY. Do NOT copy or preserve any people from IMAGE 3.",
+    "TASK: Composite IMAGE 1 subjects into IMAGE 2 background. Match the finish quality and social-poster energy of IMAGE 3. Never face-swap reference people. Never keep David or any demo subject from IMAGE 2 or IMAGE 3 unless they appear in IMAGE 1.",
+    subjectPlacement,
+    "Keep all text, logos, and branding from IMAGE 2 spelled correctly and legible. Do NOT invent a new layout or generic beauty-ad template.",
     ...(extraDirection ? [extraDirection] : []),
-    `Subject context: ${client} replaces the right-side person; stylist context ${stylist}.`,
-    "Preserve the selfie subject's likeness from IMAGE 1. Vertical portrait poster, 1024x1536 (story 9:16).",
+    `Subject context: ${client} with stylist ${stylist}.`,
+    "Vertical portrait poster, 1024x1536 (story 9:16).",
     NEVER_GENERATE,
     "Output a finished, post-ready RAMP poster ready to share on social.",
   ].join("\n\n");

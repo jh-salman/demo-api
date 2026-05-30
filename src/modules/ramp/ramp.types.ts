@@ -56,7 +56,13 @@ export type StartStylistPostRequest = {
   visualDirection?: string;
   imageEdit?: string;
   brandLayer?: string;
-  /** BEFORE BUILD poster — AI mirrors layout; selfie composited at runtime. */
+  /** BEFORE BUILD poster — scene + text, no people; save once, reuse. */
+  backgroundPosterUrl?: string;
+  /** 2-person style reference (stylist path). Finish guide only — not face-swap. */
+  stylistStyleReferenceUrl?: string;
+  /** 1-person style reference (client path). Finish guide only — not face-swap. */
+  clientStyleReferenceUrl?: string;
+  /** @deprecated use background + style refs */
   referencePosterUrl?: string;
 };
 
