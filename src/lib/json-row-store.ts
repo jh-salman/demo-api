@@ -1,5 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import { getPrisma } from "./prisma.js";
+import {
+  isTransientPrismaDbError,
+  notePrismaDbFailure,
+  shouldSkipPrismaDb,
+} from "./prisma-resilience.js";
 
 export type JsonRowGetResult = {
   stored: boolean;
@@ -41,18 +46,23 @@ export function createJsonRowStore(delegate: RowDelegate, maxItems = 500) {
 
   async function get(): Promise<JsonRowGetResult> {
     const prisma = getPrisma();
-    if (!prisma) {
+    if (!prisma || shouldSkipPrismaDb()) {
       return { stored: false, items: [] };
     }
-    const row = await delegate.findUnique({ where: { id: "default" } });
-    if (!row) {
+    try {
+      const row = await delegate.findUnique({ where: { id: "default" } });
+      if (!row) {
+        return { stored: false, items: [] };
+      }
+      return {
+        stored: true,
+        items: row.items as unknown[],
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    } catch (e) {
+      if (isTransientPrismaDbError(e)) notePrismaDbFailure(e);
       return { stored: false, items: [] };
     }
-    return {
-      stored: true,
-      items: row.items as unknown[],
-      updatedAt: row.updatedAt.toISOString(),
-    };
   }
 
   async function put(items: unknown, opts: JsonRowPutOptions = {}): Promise<JsonRowGetResult> {

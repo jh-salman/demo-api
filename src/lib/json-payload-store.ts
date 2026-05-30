@@ -1,5 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import { getPrisma } from "./prisma.js";
+import {
+  isTransientPrismaDbError,
+  notePrismaDbFailure,
+  shouldSkipPrismaDb,
+} from "./prisma-resilience.js";
 
 export type JsonPayloadGetResult = {
   stored: boolean;
@@ -45,18 +50,23 @@ export function createJsonPayloadStore(
 ) {
   async function get(id: string): Promise<JsonPayloadGetResult> {
     const prisma = getPrisma();
-    if (!prisma) {
+    if (!prisma || shouldSkipPrismaDb()) {
       return { stored: false, payload: null };
     }
-    const row = await delegate.findUnique({ where: { [idField]: id } });
-    if (!row) {
+    try {
+      const row = await delegate.findUnique({ where: { [idField]: id } });
+      if (!row) {
+        return { stored: false, payload: null };
+      }
+      return {
+        stored: true,
+        payload: asObject(row.payload),
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    } catch (e) {
+      if (isTransientPrismaDbError(e)) notePrismaDbFailure(e);
       return { stored: false, payload: null };
     }
-    return {
-      stored: true,
-      payload: asObject(row.payload),
-      updatedAt: row.updatedAt.toISOString(),
-    };
   }
 
   async function put(

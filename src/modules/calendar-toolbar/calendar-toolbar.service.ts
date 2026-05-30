@@ -1,8 +1,21 @@
 import type { Prisma } from "@prisma/client";
 import { getPrisma } from "../../lib/prisma.js";
 import { JsonRowConflictError } from "../../lib/json-row-store.js";
+import {
+  isTransientPrismaDbError,
+  notePrismaDbFailure,
+  shouldSkipPrismaDb,
+} from "../../lib/prisma-resilience.js";
 
 const MAX_ITEMS = 500;
+
+function emptyToolbarState() {
+  return {
+    stored: false as const,
+    parkedFromDrag: [] as unknown[],
+    toolbarEvents: [] as unknown[],
+  };
+}
 
 function asJsonArray(v: unknown): unknown[] {
   return Array.isArray(v) ? v.slice(0, MAX_ITEMS) : [];
@@ -10,29 +23,26 @@ function asJsonArray(v: unknown): unknown[] {
 
 async function getToolbarState() {
   const prisma = getPrisma();
-  if (!prisma) {
-    return {
-      stored: false as const,
-      parkedFromDrag: [] as unknown[],
-      toolbarEvents: [] as unknown[],
-    };
+  if (!prisma || shouldSkipPrismaDb()) {
+    return emptyToolbarState();
   }
-  const row = await prisma.salonxCalendarToolbar.findUnique({
-    where: { id: "default" },
-  });
-  if (!row) {
+  try {
+    const row = await prisma.salonxCalendarToolbar.findUnique({
+      where: { id: "default" },
+    });
+    if (!row) {
+      return emptyToolbarState();
+    }
     return {
-      stored: false as const,
-      parkedFromDrag: [] as unknown[],
-      toolbarEvents: [] as unknown[],
+      stored: true as const,
+      parkedFromDrag: row.parkedFromDrag as unknown[],
+      toolbarEvents: row.toolbarEvents as unknown[],
+      updatedAt: row.updatedAt.toISOString(),
     };
+  } catch (e) {
+    if (isTransientPrismaDbError(e)) notePrismaDbFailure(e);
+    return emptyToolbarState();
   }
-  return {
-    stored: true as const,
-    parkedFromDrag: row.parkedFromDrag as unknown[],
-    toolbarEvents: row.toolbarEvents as unknown[],
-    updatedAt: row.updatedAt.toISOString(),
-  };
 }
 
 async function putToolbarState(

@@ -6,58 +6,13 @@ import {
   mergeWithDefaults,
 } from "./salonx-config.js";
 import { getPrisma } from "./prisma.js";
-
-/** After transient DB errors, skip Prisma for a while so SSE polling does not hammer/logs. */
-const PRISMA_DB_BACKOFF_MS = 60_000;
-let prismaDbBackoffUntil = 0;
-
-function clearPrismaDbBackoff(): void {
-  prismaDbBackoffUntil = 0;
-}
-
-function shouldSkipPrismaDb(): boolean {
-  return Date.now() < prismaDbBackoffUntil;
-}
-
-function isTransientPrismaDbError(e: unknown): boolean {
-  if (!e || typeof e !== "object") return false;
-  const any = e as { code?: string; name?: string; message?: string };
-  const code = any.code;
-  if (
-    code === "P1001" ||
-    code === "P1000" ||
-    code === "P1017" ||
-    code === "P1011"
-  ) {
-    return true;
-  }
-  if (any.name === "PrismaClientInitializationError") {
-    return true;
-  }
-  const msg = typeof any.message === "string" ? any.message.toLowerCase() : "";
-  if (
-    msg.includes("can't reach database") ||
-    msg.includes("econnrefused") ||
-    msg.includes("etimedout") ||
-    msg.includes("connection timed out")
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function notePrismaDbFailure(e: unknown): void {
-  if (!isTransientPrismaDbError(e)) return;
-  prismaDbBackoffUntil = Date.now() + PRISMA_DB_BACKOFF_MS;
-}
-
-function prismaErrorSummary(e: unknown): string {
-  if (e && typeof e === "object" && "message" in e) {
-    const m = String((e as { message: string }).message);
-    return m.split("\n").find((line) => line.trim().length > 0) ?? m;
-  }
-  return String(e);
-}
+import {
+  clearPrismaDbBackoff,
+  isTransientPrismaDbError,
+  notePrismaDbFailure,
+  prismaErrorSummary,
+  shouldSkipPrismaDb,
+} from "./prisma-resilience.js";
 
 const configPath = () => path.join(process.cwd(), "data", "config.json");
 const publishedConfigPath = () =>

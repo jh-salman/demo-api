@@ -438,9 +438,11 @@ async function runGenerationJob(
     });
     await recordVisitDb(token, "ramp_generate_ready", { imageUrl, mock });
   } catch (e) {
+    const message = e instanceof Error ? e.message : "generation failed";
+    console.error("[ramp:generate]", token, message);
     await updatePostStatus(token, { status: "failed" });
     await recordVisitDb(token, "ramp_generate_failed", {
-      error: e instanceof Error ? e.message : "generation failed",
+      error: message,
     });
   } finally {
     activeGenerations.delete(token);
@@ -474,7 +476,7 @@ async function submitRampCaptureImpl(
     await prisma.rampDemoPost.update({
       where: { token },
       data: {
-        status: "pending",
+        status: "generating",
         compositeUrl: null,
         careCardUrl: mediaUrl,
         recipientPhone: body.phone ? String(body.phone).trim() : post.recipientPhone,
@@ -486,7 +488,7 @@ async function submitRampCaptureImpl(
       ...(note ? { note } : {}),
     });
     void runGenerationJob(req, token, mediaUrl, note ? { extraNote: note } : undefined);
-    return { ok: true, token, status: "pending" };
+    return { ok: true, token, status: "generating" };
   }
 
   const post = rampMemoryStore.getPost(token);
@@ -502,7 +504,7 @@ async function submitRampCaptureImpl(
   });
 
   rampMemoryStore.updatePost(token, {
-    status: "pending",
+    status: "generating",
     compositeUrl: null,
     careCardUrl: mediaUrl,
     recipientPhone: body.phone ? String(body.phone).trim() : post.recipientPhone,
@@ -513,7 +515,7 @@ async function submitRampCaptureImpl(
     ...(note ? { note } : {}),
   });
   void runGenerationJob(req, token, mediaUrl, note ? { extraNote: note } : undefined);
-  return { ok: true, token, status: "pending" };
+  return { ok: true, token, status: "generating" };
 }
 
 async function getPostStatusImpl(req: Request, token: string): Promise<RampDemoPostDto | null> {
@@ -556,7 +558,7 @@ async function regenerateImpl(
   }
 
   const note = String(opts?.note || "").trim();
-  await updatePostStatus(t, { status: "pending", compositeUrl: null });
+  await updatePostStatus(t, { status: "generating", compositeUrl: null });
   await recordVisitDb(t, "ramp_regenerate", {
     note,
     visualDirection: opts?.visualDirection || "",
@@ -569,7 +571,7 @@ async function regenerateImpl(
     extraNote: note || undefined,
   });
 
-  return { ok: true, token: t, status: "pending" };
+  return { ok: true, token: t, status: "generating" };
 }
 
 function resolveCareCardImageUrl(req: Request): string {
@@ -813,7 +815,11 @@ export const rampService = {
           items: rows.map((row) => ({
             id: row.id,
             token: row.token,
-            title: row.recipientName || row.recipientPhone,
+            title:
+              row.recipientName ||
+              row.recipientPhone ||
+              row.stylistName ||
+              "RAMP post",
             status: normalizeStatus(row.status),
             createdAt: row.createdAt.toISOString(),
           })),
@@ -829,7 +835,11 @@ export const rampService = {
       items: rows.map((row) => ({
         id: row.id,
         token: row.token,
-        title: row.recipientName || row.recipientPhone,
+        title:
+          row.recipientName ||
+          row.recipientPhone ||
+          row.stylistName ||
+          "RAMP post",
         status: normalizeStatus(row.status),
         createdAt: row.createdAt,
       })),

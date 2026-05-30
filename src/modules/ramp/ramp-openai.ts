@@ -46,11 +46,57 @@ function toPromptConfig(input: RampGenerationInput): RampPromptConfig {
   };
 }
 
+/** Force JPEG delivery for Cloudinary captures (HEIC/WebP → JPG server-side). */
+function toOpenAiSafeImageUrl(url: string): string {
+  const trimmed = url.trim();
+  if (
+    !trimmed.includes("res.cloudinary.com") ||
+    !trimmed.includes("/image/upload/")
+  ) {
+    return trimmed;
+  }
+  if (/\/image\/upload\/[^/]*f_jpg/.test(trimmed)) return trimmed;
+  return trimmed.replace(
+    "/image/upload/",
+    "/image/upload/f_jpg,q_auto:good,fl_progressive/",
+  );
+}
+
+function imagePartFromBuffer(buffer: Buffer): { blob: Blob; filename: string } {
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    return { blob: new Blob([buffer], { type: "image/jpeg" }), filename: "capture.jpg" };
+  }
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return { blob: new Blob([buffer], { type: "image/png" }), filename: "capture.png" };
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return { blob: new Blob([buffer], { type: "image/webp" }), filename: "capture.webp" };
+  }
+  throw new Error(
+    "Source photo format not supported for AI generation. Retake as JPEG/PNG or re-upload from camera.",
+  );
+}
+
 async function fetchImageBuffer(url: string): Promise<Buffer> {
-  const res = await fetch(url);
+  const safeUrl = toOpenAiSafeImageUrl(url);
+  const res = await fetch(safeUrl);
   if (!res.ok) throw new Error(`Could not download source image (${res.status})`);
   const ab = await res.arrayBuffer();
-  return Buffer.from(ab);
+  const buffer = Buffer.from(ab);
+  if (buffer.length < 32) {
+    throw new Error("Source photo download was empty or corrupt");
+  }
+  return buffer;
 }
 
 async function uploadGeneratedBuffer(
@@ -116,11 +162,12 @@ async function generateWithOpenAi(
   const model = process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1";
   const prompt = buildRampAiPrompt(toPromptConfig(input));
   const sourceBuffer = await fetchImageBuffer(input.sourceImageUrl);
+  const imagePart = imagePartFromBuffer(sourceBuffer);
   const form = new FormData();
   form.append("model", model);
   form.append("prompt", prompt);
   form.append("size", "1024x1536");
-  form.append("image[]", new Blob([sourceBuffer], { type: "image/jpeg" }), "capture.jpg");
+  form.append("image[]", imagePart.blob, imagePart.filename);
 
   const res = await fetch("https://api.openai.com/v1/images/edits", {
     method: "POST",
