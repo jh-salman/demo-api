@@ -68,7 +68,7 @@ export type StartStylistPostResponse = {
 export type SubmitRampCaptureResponse = {
   ok: true;
   token: string;
-  status: "pending";
+  status: "generating" | "processing" | "pending";
 };
 
 export type RampStatusResponse = {

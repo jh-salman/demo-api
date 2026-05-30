@@ -103,13 +103,17 @@ async function recordVisitDb(token: string, eventType: string, metadata?: unknow
     rampMemoryStore.recordVisit(token, eventType, metadata);
     return;
   }
-  await prisma.rampVisit.create({
-    data: {
-      token,
-      eventType,
-      metadataJson: metadata ?? undefined,
-    },
-  });
+  try {
+    await prisma.rampVisit.create({
+      data: {
+        token,
+        eventType,
+        metadataJson: metadata ?? undefined,
+      },
+    });
+  } catch {
+    rampMemoryStore.recordVisit(token, eventType, metadata);
+  }
 }
 
 async function storeSharedSelfieImpl(body: StoreSharedSelfieRequest) {
@@ -360,6 +364,62 @@ type RampGenerationOverrides = {
   extraNote?: string;
 };
 
+type RampPostGenerationMeta = {
+  recipientName: string;
+  stylistName: string;
+  products: unknown;
+  sourceType: string;
+  brandSlug: string;
+  caption: string | null;
+};
+
+async function readPostForGeneration(token: string): Promise<RampPostGenerationMeta | null> {
+  const prisma = getPrisma();
+  if (prisma) {
+    try {
+      const row = await prisma.rampDemoPost.findUnique({ where: { token } });
+      if (row) return row;
+    } catch {
+      /* DB unreachable — fall through */
+    }
+  }
+  const mem = rampMemoryStore.getPost(token);
+  return mem || null;
+}
+
+function buildCaptionForPost(postRow: RampPostGenerationMeta): string {
+  const postStyle = normalizeRampPostStylePreset(
+    String(postRow.sourceType || "ramp_photo").replace(/^ramp_/, "") || "curiosity",
+  );
+  return (
+    postRow.caption ||
+    buildDemoCaption({
+      recipientName: postRow.recipientName,
+      stylistName: postRow.stylistName,
+      products: normalizeProducts(postRow.products),
+      postStyle,
+    })
+  );
+}
+
+/** Never leave a post in `failed` — always publish source or generated art as ready. */
+async function completeGenerationReady(
+  token: string,
+  rawMediaUrl: string,
+  postRow: RampPostGenerationMeta | null,
+  compositeUrl: string,
+  visitMeta: Record<string, unknown>,
+) {
+  const caption = postRow ? buildCaptionForPost(postRow) : null;
+  await updatePostStatus(token, {
+    status: "ready",
+    compositeUrl,
+    caption,
+    careCardUrl: rawMediaUrl,
+  });
+  await recordVisitDb(token, "ramp_generate_ready", visitMeta);
+}
+
 async function runGenerationJob(
   req: Request,
   token: string,
@@ -377,14 +437,7 @@ async function runGenerationJob(
     }
 
     const prisma = getPrisma();
-    let postRow: {
-      recipientName: string;
-      stylistName: string;
-      products: unknown;
-      sourceType: string;
-      brandSlug: string;
-      caption: string | null;
-    } | null = null;
+    let postRow: RampPostGenerationMeta | null = null;
 
     if (prisma) {
       try {
@@ -394,21 +447,19 @@ async function runGenerationJob(
       }
     }
     if (!postRow) {
-      const mem = rampMemoryStore.getPost(token);
-      if (!mem) throw new Error("Unknown RAMP token");
-      postRow = mem;
+      postRow = rampMemoryStore.getPost(token);
     }
 
     const postStyle = normalizeRampPostStylePreset(
-      String(postRow.sourceType || "ramp_photo").replace(/^ramp_/, "") || "curiosity",
+      String(postRow?.sourceType || "ramp_photo").replace(/^ramp_/, "") || "curiosity",
     );
     const promptMeta = (await readBoltStartPromptMeta(token)) || {};
-    const { imageUrl, mock } = await generateBrandedRampImage({
+    const { imageUrl, mock, usedFallback } = await generateBrandedRampImage({
       sourceImageUrl: rawMediaUrl,
       postStyle,
-      recipientName: postRow.recipientName,
-      stylistName: postRow.stylistName,
-      brandSlug: postRow.brandSlug,
+      recipientName: postRow?.recipientName || "",
+      stylistName: postRow?.stylistName || RAMP_DEMO_PROFILE.stylistName,
+      brandSlug: postRow?.brandSlug || RAMP_DEMO_PROFILE.brandSlug,
       reqOrigin: requestOrigin(req),
       capturePath: typeof promptMeta.capturePath === "string" ? promptMeta.capturePath : undefined,
       visualDirection:
@@ -422,29 +473,37 @@ async function runGenerationJob(
       extraNote: overrides?.extraNote,
     });
 
-    const caption =
-      postRow.caption ||
-      buildDemoCaption({
-        recipientName: postRow.recipientName,
-        stylistName: postRow.stylistName,
-        products: normalizeProducts(postRow.products),
-        postStyle,
-      });
-
-    await updatePostStatus(token, {
-      status: "ready",
-      compositeUrl: imageUrl,
-      caption,
-      careCardUrl: rawMediaUrl,
+    await completeGenerationReady(token, rawMediaUrl, postRow, imageUrl, {
+      imageUrl,
+      mock,
+      usedFallback: Boolean(usedFallback),
     });
-    await recordVisitDb(token, "ramp_generate_ready", { imageUrl, mock });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "generation failed";
-    console.error("[ramp:generate]", token, message);
-    await updatePostStatus(token, { status: "failed" });
-    await recordVisitDb(token, "ramp_generate_failed", {
-      error: message,
-    });
+    const message = e instanceof Error ? e.message : "generation error";
+    console.warn("[ramp:generate] fail-safe ready with source photo", token, message);
+    try {
+      const postRow = await readPostForGeneration(token);
+      await completeGenerationReady(token, rawMediaUrl, postRow, rawMediaUrl, {
+        imageUrl: rawMediaUrl,
+        mock: true,
+        usedFallback: true,
+        error: message,
+      });
+    } catch (fallbackErr) {
+      const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : "fallback error";
+      console.error("[ramp:generate] fail-safe memory write", token, fbMsg);
+      rampMemoryStore.updatePost(token, {
+        status: "ready",
+        compositeUrl: rawMediaUrl,
+        careCardUrl: rawMediaUrl,
+      });
+      rampMemoryStore.recordVisit(token, "ramp_generate_ready", {
+        imageUrl: rawMediaUrl,
+        mock: true,
+        usedFallback: true,
+        error: message,
+      });
+    }
   } finally {
     activeGenerations.delete(token);
   }

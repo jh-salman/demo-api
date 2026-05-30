@@ -82,9 +82,8 @@ function imagePartFromBuffer(buffer: Buffer): { blob: Blob; filename: string } {
   ) {
     return { blob: new Blob([buffer], { type: "image/webp" }), filename: "capture.webp" };
   }
-  throw new Error(
-    "Source photo format not supported for AI generation. Retake as JPEG/PNG or re-upload from camera.",
-  );
+  // Unknown format — still attempt OpenAI as JPEG (Cloudinary often delivers convertible bytes).
+  return { blob: new Blob([buffer], { type: "image/jpeg" }), filename: "capture.jpg" };
 }
 
 async function fetchImageBuffer(url: string): Promise<Buffer> {
@@ -163,45 +162,67 @@ async function generateWithOpenAi(
   const prompt = buildRampAiPrompt(toPromptConfig(input));
   const sourceBuffer = await fetchImageBuffer(input.sourceImageUrl);
   const imagePart = imagePartFromBuffer(sourceBuffer);
-  const form = new FormData();
-  form.append("model", model);
-  form.append("prompt", prompt);
-  form.append("size", "1024x1536");
-  form.append("image[]", imagePart.blob, imagePart.filename);
 
-  const res = await fetch("https://api.openai.com/v1/images/edits", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  });
+  const maxAttempts = 3;
+  let lastError: Error | null = null;
 
-  const json = (await res.json().catch(() => ({}))) as {
-    data?: Array<{ b64_json?: string; url?: string }>;
-    error?: { message?: string };
-  };
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const form = new FormData();
+    form.append("model", model);
+    form.append("prompt", prompt);
+    form.append("size", "1024x1536");
+    form.append("image[]", imagePart.blob, imagePart.filename);
 
-  if (!res.ok) {
-    throw new Error(json.error?.message || `OpenAI image generation failed (${res.status})`);
+    const res = await fetch("https://api.openai.com/v1/images/edits", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+
+    const json = (await res.json().catch(() => ({}))) as {
+      data?: Array<{ b64_json?: string; url?: string }>;
+      error?: { message?: string };
+    };
+
+    if (!res.ok) {
+      lastError = new Error(json.error?.message || `OpenAI image generation failed (${res.status})`);
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 700 * attempt));
+        continue;
+      }
+      throw lastError;
+    }
+
+    const first = json.data?.[0];
+    if (first?.url) {
+      return { imageUrl: first.url, mock: false };
+    }
+    if (first?.b64_json) {
+      const out = Buffer.from(first.b64_json, "base64");
+      const hosted = await uploadGeneratedBuffer(out, input.reqOrigin);
+      return { imageUrl: hosted, mock: false };
+    }
+
+    lastError = new Error("OpenAI returned no image data");
+    if (attempt < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 700 * attempt));
+    }
   }
 
-  const first = json.data?.[0];
-  if (first?.url) {
-    return { imageUrl: first.url, mock: false };
-  }
-  if (first?.b64_json) {
-    const out = Buffer.from(first.b64_json, "base64");
-    const hosted = await uploadGeneratedBuffer(out, input.reqOrigin);
-    return { imageUrl: hosted, mock: false };
-  }
-
-  throw new Error("OpenAI returned no image data");
+  throw lastError || new Error("OpenAI image generation failed");
 }
 
 export async function generateBrandedRampImage(
   input: RampGenerationInput,
-): Promise<{ imageUrl: string; mock: boolean }> {
+): Promise<{ imageUrl: string; mock: boolean; usedFallback?: boolean }> {
   if (isOpenAiMockMode()) {
     return { imageUrl: input.sourceImageUrl, mock: true };
   }
-  return generateWithOpenAi(input);
+  try {
+    return await generateWithOpenAi(input);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "OpenAI unavailable";
+    console.warn("[ramp:openai] fail-safe — using source photo", message);
+    return { imageUrl: input.sourceImageUrl, mock: true, usedFallback: true };
+  }
 }
