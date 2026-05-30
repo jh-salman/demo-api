@@ -3,8 +3,11 @@ export const RAMP_DEMO_PROFILE = {
   brandSlug: "danger-jones",
   stylistName: "Joe Stylzz",
   primaryIgHandle: "@dangerjones_balayage",
-  eventLabel: "Premier Orlando 2026",
-  campaignHashtags: ["#ButterflyLoft", "#Balayage"],
+  eventLabel: "Premier Hair Show",
+  eventLiveLine: "Live @ Premier Hair Show",
+  eventLocationLine: "Orlando, FL.",
+  campaignHashtags: ["#DangerJones", "#PremiereOrlando", "#PremierHairShow"],
+  defaultLink: "https://dangerjonescreative.com/",
   careCardHeroUrl: null as string | null,
 } as const;
 
@@ -37,8 +40,12 @@ export function buildDemoCaption(input: {
   const tags = tagList.join(" ");
   const productLine =
     input.products.length > 0 ? `\n${input.products.slice(0, 3).join(" · ")}` : "";
+  const linkSources =
+    input.links?.map((l) => String(l || "").trim()).filter(Boolean).slice(0, 2) ||
+    [];
   const linkLine =
-    input.links?.map((l) => String(l || "").trim()).filter(Boolean).slice(0, 2).join("\n") || "";
+    linkSources.length > 0 ? linkSources.join("\n") : RAMP_DEMO_PROFILE.defaultLink;
   const linkSuffix = linkLine ? `\n${linkLine}` : "";
-  return `${headline} ✨\n${first} × ${stylist}${productLine}\n${RAMP_DEMO_PROFILE.primaryIgHandle}\n${tags}${linkSuffix}`;
+  const eventBlock = `${RAMP_DEMO_PROFILE.eventLiveLine}\n${RAMP_DEMO_PROFILE.eventLocationLine}`;
+  return `${headline} ✨\n${first} × ${stylist}${productLine}\n${eventBlock}\n${RAMP_DEMO_PROFILE.primaryIgHandle}\n${tags}${linkSuffix}`;
 }
