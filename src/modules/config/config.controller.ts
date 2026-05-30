@@ -122,6 +122,18 @@ export const configController = {
           }
         }
       }
+      const mediaKinds = (s1 as { mediaKinds?: unknown }).mediaKinds;
+      if (mediaKinds && typeof mediaKinds === "object") {
+        patch.s1Demo.mediaKinds = mediaKinds as NonNullable<
+          ConfigApiPatch["s1Demo"]
+        >["mediaKinds"];
+      }
+      const variants = (s1 as { variants?: unknown }).variants;
+      if (variants && typeof variants === "object") {
+        patch.s1Demo.variants = variants as NonNullable<
+          ConfigApiPatch["s1Demo"]
+        >["variants"];
+      }
     }
 
     if (b.addBrand && typeof b.addBrand === "object") {

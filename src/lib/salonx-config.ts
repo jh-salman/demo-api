@@ -399,6 +399,12 @@ export function patchLegacyFields(
       images?: Partial<Record<S1DemoSlotId, string>>;
       adjust?: Partial<Record<S1DemoSlotId, S1DemoSlotAdjust>>;
       mediaKinds?: Partial<Record<S1DemoSlotId, S1DemoSlotMediaKind>>;
+      variants?: Partial<
+        Record<
+          S1DemoSlotId,
+          import("./s1-demo-variants.js").S1DemoSlotVariantSet
+        >
+      >;
     };
   }>,
 ): SalonxV2AdminConfig {
@@ -438,6 +444,20 @@ export function patchLegacyFields(
       }
       next.brands[idx].s1Demo.mediaKinds = cur;
     }
+    const variantsRaw = patch.s1Demo.variants;
+    if (variantsRaw && typeof variantsRaw === "object") {
+      const normalized = normalizeS1DemoVariantsField(variantsRaw);
+      if (normalized) {
+        next.brands[idx].s1Demo.variants = normalized;
+        const synced = syncLegacyFromActiveVariants(
+          next.brands[idx].s1Demo as S1DemoWithVariants,
+        );
+        next.brands[idx].s1Demo.images = synced.images;
+        next.brands[idx].s1Demo.adjust = synced.adjust;
+        next.brands[idx].s1Demo.mediaKinds = synced.mediaKinds;
+        next.brands[idx].s1Demo.variants = synced.variants;
+      }
+    }
   }
   return next;
 }
@@ -454,6 +474,12 @@ export type ConfigApiPatch = {
     images?: Partial<Record<S1DemoSlotId, string>>;
     adjust?: Partial<Record<S1DemoSlotId, S1DemoSlotAdjust>>;
     mediaKinds?: Partial<Record<S1DemoSlotId, S1DemoSlotMediaKind>>;
+    variants?: Partial<
+      Record<
+        S1DemoSlotId,
+        import("./s1-demo-variants.js").S1DemoSlotVariantSet
+      >
+    >;
   };
 };
 
