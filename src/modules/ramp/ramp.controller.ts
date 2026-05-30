@@ -157,6 +157,20 @@ export const rampController = {
     }
   }),
 
+  dismissFromQueue: asyncHandler(async (req: Request, res: Response) => {
+    const token = String(req.params.token || "").trim();
+    if (!token) throw new HttpError(400, "token required");
+    try {
+      res.json(await rampService.dismissFromQueue(token));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "dismiss-queue failed";
+      if (msg.includes("Unknown RAMP") || msg.includes("token")) {
+        throw new HttpError(404, msg);
+      }
+      throw new HttpError(500, msg);
+    }
+  }),
+
   fireCareCard: asyncHandler(async (req: Request, res: Response) => {
     const body = req.body as FireClientCareCardRequest;
     if (!body || typeof body !== "object") {

@@ -852,6 +852,15 @@ export const rampService = {
     return { ok: true as const, token: t, eventType };
   },
 
+  /** Remove a row from Screen1 RAMP queue (cross-device — status leaves queue list). */
+  dismissFromQueue: async (token: string) => {
+    const t = String(token || "").trim();
+    if (!t) throw new Error("token is required");
+    const updated = await updatePostStatus(t, { status: "sent" });
+    if (!updated) throw new Error("Unknown RAMP token");
+    return { ok: true as const, token: t, status: "sent" as const };
+  },
+
   listRecent: async (limit = 24) => {
     const cap = Math.max(1, Math.min(50, Number(limit) || 24));
     const queueStatuses = ["pending", "generating", "processing", "ready", "failed"];

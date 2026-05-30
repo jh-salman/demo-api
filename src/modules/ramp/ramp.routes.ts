@@ -7,6 +7,7 @@ export const rampRouter = Router();
 rampRouter.get("/recent", rampController.listRecent);
 rampRouter.post("/submit-capture", rampController.submitRampCapture);
 rampRouter.get("/status/:token", rampController.getStatus);
+rampRouter.post("/:token/dismiss-queue", rampController.dismissFromQueue);
 rampRouter.post("/:token/regenerate", rampController.regenerate);
 rampRouter.post("/:token/recipient", rampController.updateRecipient);
 rampRouter.post("/:token/send-sms", rampController.sendSms);
