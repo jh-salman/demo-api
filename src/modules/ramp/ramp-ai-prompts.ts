@@ -213,13 +213,15 @@ export function buildRampReferencePosterPrompt(input: {
 
   return [
     "You receive TWO images:",
-    "• IMAGE 1 (first): live capture / selfie — preserve every face exactly; these are the subjects.",
+    "• IMAGE 1 (first): live capture / selfie — preserve the subject's face exactly.",
     "• IMAGE 2 (second): REFERENCE POSTER — mirror this layout, typography, colors, branding, text, and scene exactly.",
-    "TASK: Place the people from IMAGE 1 into the reference poster from IMAGE 2 as if photographed on that show floor. Keep all poster text, logos, handles, and graphic design from IMAGE 2 unchanged and sharp.",
+    "PLACEMENT LOCK (critical): If IMAGE 2 shows two people, keep the LEFT person completely unchanged — especially the person wearing glasses on the left. Replace ONLY the RIGHT-side person with the subject from IMAGE 1. Do not swap both people. Do not alter the left person's face, hair, glasses, clothing, or pose.",
+    "If IMAGE 2 has only one person slot or no people, place the IMAGE 1 subject in the primary foreground person area on the right half of the poster, matching scale and lighting of the reference.",
+    "TASK: Composite the IMAGE 1 subject into the RIGHT person position while preserving every pixel of poster text, logos, handles, crate/scene, and the unchanged left subject from IMAGE 2.",
     "Do NOT invent a new layout. Do NOT use generic beauty-ad or templated CRM styling. Match IMAGE 2 fidelity and finish quality.",
     ...(extraDirection ? [extraDirection] : []),
-    `Subject context: ${client} with stylist ${stylist}.`,
-    "Preserve every face's likeness from IMAGE 1. Vertical portrait poster, 1024x1536 (story 9:16).",
+    `Subject context: ${client} replaces the right-side person; stylist context ${stylist}.`,
+    "Preserve the selfie subject's likeness from IMAGE 1. Vertical portrait poster, 1024x1536 (story 9:16).",
     NEVER_GENERATE,
     "Output a finished, post-ready RAMP poster ready to share on social.",
   ].join("\n\n");
