@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   buildRampAiPrompt,
+  buildRampReferencePosterPrompt,
   normalizeRampBrandLayer,
   normalizeRampCapturePath,
   normalizeRampImageEdit,
@@ -30,6 +31,8 @@ export type RampGenerationInput = {
   captureType?: string;
   /** Optional freeform edit instruction supplied on a regenerate request. */
   extraNote?: string;
+  /** Reference poster URL (BEFORE BUILD) — enables 2-image KISS generation. */
+  referencePosterUrl?: string;
 };
 
 function toPromptConfig(input: RampGenerationInput): RampPromptConfig {
@@ -159,9 +162,26 @@ async function generateWithOpenAi(
   }
 
   const model = process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1";
-  const prompt = buildRampAiPrompt(toPromptConfig(input));
+  const referenceUrl = String(input.referencePosterUrl || "").trim();
   const sourceBuffer = await fetchImageBuffer(input.sourceImageUrl);
   const imagePart = imagePartFromBuffer(sourceBuffer);
+  let referencePart: { blob: Blob; filename: string } | null = null;
+  if (referenceUrl) {
+    try {
+      const refBuffer = await fetchImageBuffer(referenceUrl);
+      referencePart = imagePartFromBuffer(refBuffer);
+    } catch (e) {
+      console.warn("[ramp:openai] reference poster fetch failed — prompt-only fallback", e);
+    }
+  }
+
+  const prompt = referencePart
+    ? buildRampReferencePosterPrompt({
+        recipientName: input.recipientName,
+        stylistName: input.stylistName,
+        extraNote: input.extraNote,
+      })
+    : buildRampAiPrompt(toPromptConfig(input));
 
   const maxAttempts = 3;
   let lastError: Error | null = null;
@@ -172,6 +192,9 @@ async function generateWithOpenAi(
     form.append("prompt", prompt);
     form.append("size", "1024x1536");
     form.append("image[]", imagePart.blob, imagePart.filename);
+    if (referencePart) {
+      form.append("image[]", referencePart.blob, referencePart.filename);
+    }
 
     const res = await fetch("https://api.openai.com/v1/images/edits", {
       method: "POST",

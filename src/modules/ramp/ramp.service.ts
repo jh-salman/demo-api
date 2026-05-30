@@ -245,6 +245,7 @@ async function startStylistPostImpl(
   const visualDirection = String(body.visualDirection || "raw").trim() || "raw";
   const imageEdit = String(body.imageEdit || "hair_color_pop").trim() || "hair_color_pop";
   const brandLayer = String(body.brandLayer || "active_brand").trim() || "active_brand";
+  const referencePosterUrl = String(body.referencePosterUrl || "").trim();
   const tags = normalizeTags(body.tags);
   const links = normalizeLinks(body.links);
   const sourceType = `ramp_${captureType}`;
@@ -265,6 +266,7 @@ async function startStylistPostImpl(
     visualDirection,
     imageEdit,
     brandLayer,
+    referencePosterUrl: referencePosterUrl || undefined,
     tags,
     links,
   };
@@ -471,6 +473,10 @@ async function runGenerationJob(
       brandLayer: typeof promptMeta.brandLayer === "string" ? promptMeta.brandLayer : undefined,
       captureType: typeof promptMeta.captureType === "string" ? promptMeta.captureType : undefined,
       extraNote: overrides?.extraNote,
+      referencePosterUrl:
+        typeof promptMeta.referencePosterUrl === "string"
+          ? promptMeta.referencePosterUrl
+          : undefined,
     });
 
     await completeGenerationReady(token, rawMediaUrl, postRow, imageUrl, {

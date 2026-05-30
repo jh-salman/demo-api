@@ -198,6 +198,33 @@ export function normalizeRampCapturePath(raw?: string, captureType?: string): Ra
   return "stylist_path";
 }
 
+/** KISS reference mode — selfie (image 1) + reference poster (image 2). */
+export function buildRampReferencePosterPrompt(input: {
+  recipientName: string;
+  stylistName: string;
+  extraNote?: string;
+}): string {
+  const client = String(input.recipientName || "Guest").trim() || "Guest";
+  const stylist = String(input.stylistName || "Stylist").trim() || "Stylist";
+  const note = String(input.extraNote || "").trim();
+  const extraDirection = note
+    ? `STYLIST NOTE (priority — still preserve faces and keep reference poster text legible): ${note}`
+    : "";
+
+  return [
+    "You receive TWO images:",
+    "• IMAGE 1 (first): live capture / selfie — preserve every face exactly; these are the subjects.",
+    "• IMAGE 2 (second): REFERENCE POSTER — mirror this layout, typography, colors, branding, text, and scene exactly.",
+    "TASK: Place the people from IMAGE 1 into the reference poster from IMAGE 2 as if photographed on that show floor. Keep all poster text, logos, handles, and graphic design from IMAGE 2 unchanged and sharp.",
+    "Do NOT invent a new layout. Do NOT use generic beauty-ad or templated CRM styling. Match IMAGE 2 fidelity and finish quality.",
+    ...(extraDirection ? [extraDirection] : []),
+    `Subject context: ${client} with stylist ${stylist}.`,
+    "Preserve every face's likeness from IMAGE 1. Vertical portrait poster, 1024x1536 (story 9:16).",
+    NEVER_GENERATE,
+    "Output a finished, post-ready RAMP poster ready to share on social.",
+  ].join("\n\n");
+}
+
 export function buildRampAiPrompt(input: RampPromptConfig): string {
   const brand = String(input.brandSlug || "salon").replace(/-/g, " ");
   const client = String(input.recipientName || "Guest").trim() || "Guest";

@@ -56,6 +56,8 @@ export type StartStylistPostRequest = {
   visualDirection?: string;
   imageEdit?: string;
   brandLayer?: string;
+  /** BEFORE BUILD poster — AI mirrors layout; selfie composited at runtime. */
+  referencePosterUrl?: string;
 };
 
 export type StartStylistPostResponse = {
