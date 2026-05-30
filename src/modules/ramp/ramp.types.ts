@@ -27,6 +27,11 @@ export type RampDemoPostDto = {
   updatedAt: string;
 };
 
+export type UpdateRampRecipientRequest = {
+  recipientPhone?: string;
+  recipientName?: string;
+};
+
 export type StoreSharedSelfieRequest = {
   token: string;
   mediaUrl: string;

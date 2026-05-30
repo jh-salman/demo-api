@@ -2,7 +2,12 @@ import type { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
 import { rampService } from "./ramp.service.js";
-import type { StoreSharedSelfieRequest, StartStylistPostRequest, FireClientCareCardRequest } from "./ramp.types.js";
+import type {
+  StoreSharedSelfieRequest,
+  StartStylistPostRequest,
+  FireClientCareCardRequest,
+  UpdateRampRecipientRequest,
+} from "./ramp.types.js";
 
 export const rampController = {
   getPost: asyncHandler(async (req: Request, res: Response) => {
@@ -103,6 +108,31 @@ export const rampController = {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "regenerate failed";
       if (msg.includes("Unknown RAMP") || msg.includes("No source capture")) {
+        throw new HttpError(400, msg);
+      }
+      throw new HttpError(500, msg);
+    }
+  }),
+
+  updateRecipient: asyncHandler(async (req: Request, res: Response) => {
+    const token = String(req.params.token || "").trim();
+    if (!token) throw new HttpError(400, "token required");
+    const body = req.body as UpdateRampRecipientRequest;
+    if (!body || typeof body !== "object") {
+      throw new HttpError(400, "Expected JSON object");
+    }
+    try {
+      res.json(
+        await rampService.updateRecipient(req, token, {
+          recipientPhone:
+            typeof body.recipientPhone === "string" ? body.recipientPhone : undefined,
+          recipientName:
+            typeof body.recipientName === "string" ? body.recipientName : undefined,
+        }),
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "update-recipient failed";
+      if (msg.includes("Unknown RAMP") || msg.includes("phone number")) {
         throw new HttpError(400, msg);
       }
       throw new HttpError(500, msg);

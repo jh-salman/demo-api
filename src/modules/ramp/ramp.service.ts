@@ -315,6 +315,7 @@ async function updatePostStatus(
     caption?: string | null;
     careCardUrl?: string | null;
     recipientPhone?: string;
+    recipientName?: string;
   },
 ) {
   const prisma = getPrisma();
@@ -539,6 +540,55 @@ async function getPostStatusImpl(req: Request, token: string): Promise<RampDemoP
   }
 
   return dtoFromMemory(rampMemoryStore.getPost(t));
+}
+
+async function updateRecipientImpl(
+  req: Request,
+  token: string,
+  body: { recipientPhone?: string; recipientName?: string },
+): Promise<{ ok: true; post: RampDemoPostDto }> {
+  const t = String(token || "").trim();
+  if (!t) throw new Error("token is required");
+
+  const recipientPhone = normalizePhone(String(body.recipientPhone || "").trim());
+  if (!recipientPhone) throw new Error("Client phone number is required");
+
+  const recipientName = String(body.recipientName || "").trim();
+  const patch = {
+    recipientPhone,
+    ...(recipientName ? { recipientName } : {}),
+  };
+
+  const prisma = getPrisma();
+  if (prisma) {
+    try {
+      const row = await prisma.rampDemoPost.findUnique({ where: { token: t } });
+      if (!row) throw new Error("Unknown RAMP token");
+      const updated = await prisma.rampDemoPost.update({
+        where: { token: t },
+        data: patch,
+      });
+      await recordVisitDb(t, "ramp_recipient_set", patch);
+      return {
+        ok: true,
+        post: dtoFromRow({
+          ...updated,
+          landingUrl: rampLandingUrl(req, updated.token),
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("Unknown RAMP")) throw e;
+      /* fall through to memory store */
+    }
+  }
+
+  const mem = rampMemoryStore.getPost(t);
+  if (!mem) throw new Error("Unknown RAMP token");
+  rampMemoryStore.updatePost(t, patch);
+  rampMemoryStore.recordVisit(t, "ramp_recipient_set", patch);
+  const post = dtoFromMemory(rampMemoryStore.getPost(t));
+  if (!post) throw new Error("Unknown RAMP token");
+  return { ok: true, post };
 }
 
 async function regenerateImpl(
@@ -786,6 +836,8 @@ export const rampService = {
   getPostStatus: getPostStatusImpl,
 
   regenerate: regenerateImpl,
+
+  updateRecipient: updateRecipientImpl,
 
   sendRampPostSms: sendRampPostSmsImpl,
 
