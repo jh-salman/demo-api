@@ -3,7 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   buildRampAiPrompt,
-  buildRampCachedCompositePrompt,
+  buildRampBackgroundPassPrompt,
+  buildRampSelfieCompositePrompt,
   normalizeRampBrandLayer,
   normalizeRampCapturePath,
   normalizeRampImageEdit,
@@ -156,56 +157,21 @@ async function uploadGeneratedBuffer(
   return `${origin.replace(/\/$/, "")}/uploads/ramp/${filename}`;
 }
 
-async function generateWithOpenAi(
-  input: RampGenerationInput,
-): Promise<{ imageUrl: string; mock: boolean }> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    return { imageUrl: input.sourceImageUrl, mock: true };
-  }
+type ImagePart = { blob: Blob; filename: string };
 
-  const model = process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1";
-  const capturePath = normalizeRampCapturePath(input.capturePath, input.captureType);
-  const backgroundUrl = String(input.backgroundPosterUrl || "").trim();
-  const legacyReferenceUrl = String(input.referencePosterUrl || "").trim();
-  const stylistStyleUrl =
-    String(input.stylistStyleReferenceUrl || "").trim() || legacyReferenceUrl;
-  const clientStyleUrl = String(input.clientStyleReferenceUrl || "").trim();
-  const styleRefUrl = capturePath === "client_path" ? clientStyleUrl : stylistStyleUrl;
-
-  const sourceBuffer = await fetchImageBuffer(input.sourceImageUrl);
-  const imagePart = imagePartFromBuffer(sourceBuffer);
-
-  let backgroundPart: { blob: Blob; filename: string } | null = null;
-  let styleRefPart: { blob: Blob; filename: string } | null = null;
-
-  if (backgroundUrl) {
-    try {
-      const bgBuffer = await fetchImageBuffer(backgroundUrl);
-      backgroundPart = imagePartFromBuffer(bgBuffer);
-    } catch (e) {
-      console.warn("[ramp:openai] background poster fetch failed", e);
-    }
-  }
-  if (styleRefUrl) {
-    try {
-      const refBuffer = await fetchImageBuffer(styleRefUrl);
-      styleRefPart = imagePartFromBuffer(refBuffer);
-    } catch (e) {
-      console.warn("[ramp:openai] style reference fetch failed", e);
-    }
-  }
-
-  const useCachedComposite = Boolean(backgroundPart && styleRefPart);
-  const prompt = useCachedComposite
-    ? buildRampCachedCompositePrompt({
-        recipientName: input.recipientName,
-        stylistName: input.stylistName,
-        capturePath,
-        extraNote: input.extraNote,
-      })
-    : buildRampAiPrompt(toPromptConfig(input));
-
+/**
+ * Single OpenAI `images/edits` call with retry. Returns the raw image bytes so
+ * the result can be fed forward into a follow-up compositing pass.
+ */
+async function runOpenAiImageEdit(params: {
+  apiKey: string;
+  model: string;
+  prompt: string;
+  images: ImagePart[];
+  size?: string;
+}): Promise<Buffer> {
+  const { apiKey, model, prompt, images } = params;
+  const size = params.size || "1024x1536";
   const maxAttempts = 3;
   let lastError: Error | null = null;
 
@@ -213,13 +179,9 @@ async function generateWithOpenAi(
     const form = new FormData();
     form.append("model", model);
     form.append("prompt", prompt);
-    form.append("size", "1024x1536");
-    form.append("image[]", imagePart.blob, imagePart.filename);
-    if (backgroundPart) {
-      form.append("image[]", backgroundPart.blob, backgroundPart.filename);
-    }
-    if (styleRefPart) {
-      form.append("image[]", styleRefPart.blob, styleRefPart.filename);
+    form.append("size", size);
+    for (const part of images) {
+      form.append("image[]", part.blob, part.filename);
     }
 
     const res = await fetch("https://api.openai.com/v1/images/edits", {
@@ -243,13 +205,11 @@ async function generateWithOpenAi(
     }
 
     const first = json.data?.[0];
-    if (first?.url) {
-      return { imageUrl: first.url, mock: false };
-    }
     if (first?.b64_json) {
-      const out = Buffer.from(first.b64_json, "base64");
-      const hosted = await uploadGeneratedBuffer(out, input.reqOrigin);
-      return { imageUrl: hosted, mock: false };
+      return Buffer.from(first.b64_json, "base64");
+    }
+    if (first?.url) {
+      return fetchImageBuffer(first.url);
     }
 
     lastError = new Error("OpenAI returned no image data");
@@ -259,6 +219,103 @@ async function generateWithOpenAi(
   }
 
   throw lastError || new Error("OpenAI image generation failed");
+}
+
+async function generateWithOpenAi(
+  input: RampGenerationInput,
+): Promise<{ imageUrl: string; mock: boolean }> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { imageUrl: input.sourceImageUrl, mock: true };
+  }
+
+  const model = process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1";
+  const capturePath = normalizeRampCapturePath(input.capturePath, input.captureType);
+  const backgroundUrl = String(input.backgroundPosterUrl || "").trim();
+  const legacyReferenceUrl = String(input.referencePosterUrl || "").trim();
+  const stylistStyleUrl =
+    String(input.stylistStyleReferenceUrl || "").trim() || legacyReferenceUrl;
+  const clientStyleUrl = String(input.clientStyleReferenceUrl || "").trim();
+  const styleRefUrl = capturePath === "client_path" ? clientStyleUrl : stylistStyleUrl;
+
+  const sourceBuffer = await fetchImageBuffer(input.sourceImageUrl);
+  const selfiePart = imagePartFromBuffer(sourceBuffer);
+
+  let backgroundPart: ImagePart | null = null;
+  let styleRefPart: ImagePart | null = null;
+
+  if (backgroundUrl) {
+    try {
+      const bgBuffer = await fetchImageBuffer(backgroundUrl);
+      backgroundPart = imagePartFromBuffer(bgBuffer);
+    } catch (e) {
+      console.warn("[ramp:openai] background poster fetch failed", e);
+    }
+  }
+  if (styleRefUrl) {
+    try {
+      const refBuffer = await fetchImageBuffer(styleRefUrl);
+      styleRefPart = imagePartFromBuffer(refBuffer);
+    } catch (e) {
+      console.warn("[ramp:openai] style reference fetch failed", e);
+    }
+  }
+
+  // ── TWO-PASS PIPELINE (selfie composited LAST) ───────────────────────────
+  // When a background poster is supplied, do ALL the tags / attribution /
+  // branding / modeling on the BACKGROUND first (no selfie in this pass), then
+  // composite the live selfie as the final, untouched layer. The face never
+  // enters the text-generation pass, so its likeness can't be corrupted.
+  if (backgroundPart) {
+    const stage1Images: ImagePart[] = [backgroundPart];
+    if (styleRefPart) stage1Images.push(styleRefPart);
+
+    const backgroundPrompt = buildRampBackgroundPassPrompt({
+      recipientName: input.recipientName,
+      stylistName: input.stylistName,
+      brandSlug: input.brandSlug,
+      capturePath,
+      extraNote: input.extraNote,
+      hasStyleReference: Boolean(styleRefPart),
+    });
+
+    const finishedBackground = await runOpenAiImageEdit({
+      apiKey,
+      model,
+      prompt: backgroundPrompt,
+      images: stage1Images,
+    });
+    const finishedBackgroundPart = imagePartFromBuffer(finishedBackground);
+
+    const compositePrompt = buildRampSelfieCompositePrompt({
+      recipientName: input.recipientName,
+      stylistName: input.stylistName,
+      capturePath,
+      extraNote: input.extraNote,
+    });
+
+    const finalBuffer = await runOpenAiImageEdit({
+      apiKey,
+      model,
+      prompt: compositePrompt,
+      // Selfie FIRST as the protected hero layer, finished poster SECOND.
+      images: [selfiePart, finishedBackgroundPart],
+    });
+
+    const hosted = await uploadGeneratedBuffer(finalBuffer, input.reqOrigin);
+    return { imageUrl: hosted, mock: false };
+  }
+
+  // ── SINGLE-PASS FALLBACK (no background poster supplied) ──────────────────
+  const prompt = buildRampAiPrompt(toPromptConfig(input));
+  const finalBuffer = await runOpenAiImageEdit({
+    apiKey,
+    model,
+    prompt,
+    images: [selfiePart],
+  });
+  const hosted = await uploadGeneratedBuffer(finalBuffer, input.reqOrigin);
+  return { imageUrl: hosted, mock: false };
 }
 
 export async function generateBrandedRampImage(

@@ -69,6 +69,21 @@ const RAMP_POSTER_SYSTEM = [
   "CTA BANNER: a torn neon accent banner near the bottom reading the comment call-to-action, with a tiny footer line under it (see TEXT TO RENDER).",
 ].join("\n");
 
+/**
+ * Same poster language as RAMP_POSTER_SYSTEM but with NO subject in the frame —
+ * used for the Stage 1 "background pass" of the two-pass pipeline. The hero
+ * frame is rendered EMPTY so the live selfie can be composited in last.
+ */
+const RAMP_POSTER_SYSTEM_NO_SUBJECT = [
+  "OUTPUT FORMAT: a finished vertical 9:16 social-media POSTER (story format) BACKGROUND graphic — a designed layout, NOT a plain photo, and containing NO people.",
+  "BACKGROUND: deep black with gritty grunge texture, faint distressed paper/scratches, subtle dark foliage or smoke shadows. High contrast.",
+  "HERO AREA: leave an EMPTY slightly-rotated photo frame with rough torn / taped edges (polaroid-meets-poster) where a portrait subject will be composited later. The frame interior must stay empty and neutral — do NOT draw a person, face, silhouette, or placeholder figure inside it.",
+  "HEADLINE TYPOGRAPHY: large hand-painted grunge BRUSH lettering across the top, mixing bright white and the neon accent. Energetic, slightly messy, layered strokes. The headline is a curiosity HOOK question (see TEXT TO RENDER).",
+  "GRAPHIC ELEMENTS: scatter neon lightning-bolt marks, hand-drawn arrows pointing at the hero frame, small '[LIVE]' tag, a 'RAMP POST IT' badge, and short kicker phrases like 'NEW LOOK / NEW ENERGY' and 'WHEN CULTURE SHOWS UP, EVERYTHING CHANGES.'",
+  "BRAND SIDEBAR: the active brand wordmark set vertically down one edge in faded tonal type (e.g. 'DANGER JONES').",
+  "CTA BANNER: a torn neon accent banner near the bottom reading the comment call-to-action, with a tiny footer line under it (see TEXT TO RENDER).",
+].join("\n");
+
 const BASE_PRESETS: Record<RampPostStylePreset, string> = {
   curiosity: `Create a vertical social-media CURIOSITY-HOOK poster using the uploaded image as the hero photo inside a designed graphic layout (RAMP POST style).
 Preserve every subject's facial identity exactly; only the hair gets the bold color pop.
@@ -229,6 +244,104 @@ export function buildRampCachedCompositePrompt(input: {
     "Vertical portrait poster, 1024x1536 (story 9:16).",
     NEVER_GENERATE,
     "Output a finished, post-ready RAMP poster ready to share on social.",
+  ].join("\n\n");
+}
+
+/**
+ * STAGE 1 of the two-pass RAMP pipeline — finish the BACKGROUND POSTER only.
+ *
+ * All hashtags, tags, attribution, branding, and modeling happen in THIS pass,
+ * with NO selfie/face present. This keeps the live face out of the
+ * text/tag-generation pass entirely, so it can never be corrupted. The output
+ * leaves an empty hero frame for the selfie to be composited in during Stage 2.
+ */
+export function buildRampBackgroundPassPrompt(input: {
+  recipientName: string;
+  stylistName: string;
+  brandSlug: string;
+  capturePath: RampCapturePath;
+  extraNote?: string;
+  hasStyleReference?: boolean;
+}): string {
+  const brand = String(input.brandSlug || "salon").replace(/-/g, " ");
+  const brandWordmark = brand.toUpperCase();
+  const client = String(input.recipientName || "Guest").trim() || "Guest";
+  const stylist = String(input.stylistName || "Stylist").trim() || "Stylist";
+  const headline = `Did ${client} get his hair done by ${stylist}?`;
+  const note = String(input.extraNote || "").trim();
+
+  const imagesLine = input.hasStyleReference
+    ? [
+        "You receive TWO images:",
+        "• IMAGE 1 (first): BACKGROUND POSTER — the base scene/canvas. Build the finished poster on top of this and keep its existing scene, colors, logos, handles, and any existing text.",
+        "• IMAGE 2 (second): STYLE REFERENCE — finish quality, layout rhythm, typography weight, and color-grading guide ONLY. Do NOT copy any people or faces from IMAGE 2.",
+      ].join("\n")
+    : [
+        "You receive ONE image:",
+        "• IMAGE 1 (first): BACKGROUND POSTER — the base scene/canvas. Build the finished poster on top of this and keep its existing scene, colors, logos, handles, and any existing text.",
+      ].join("\n");
+
+  const textToRender = [
+    "TEXT TO RENDER (spell exactly, bold and legible):",
+    `• HEADLINE (grunge brush, white + neon): "${headline}"`,
+    `• KICKER near headline: "NEW LOOK / NEW ENERGY"`,
+    `• TAGS: "[LIVE]"  and  "RAMP POST IT NOW"`,
+    `• SIDE NOTE: "WHEN CULTURE SHOWS UP, EVERYTHING CHANGES."`,
+    `• VERTICAL BRAND WORDMARK down one edge: "${brandWordmark}"`,
+    `• CTA BANNER (neon, torn): "WHAT DO YOU THINK?  ⚡  COMMENT BELOW"`,
+    `• FOOTER LINE under banner: "MORE ALL WEEKEND."`,
+  ].join("\n");
+
+  return [
+    imagesLine,
+    "TASK: Produce the FINISHED RAMP poster BACKGROUND only. Render ALL graphics, hashtags, tags, attribution, branding, and modeling now. Do NOT place any person, face, or selfie in this image — leave a clean, well-lit EMPTY hero frame (roughly centered, lower-middle) sized for a single portrait subject to be composited in later.",
+    "CRITICAL: this output must contain NO people and NO faces of any kind.",
+    RAMP_POSTER_SYSTEM_NO_SUBJECT,
+    CORE_VISUAL_DNA,
+    ...(note ? [`STYLIST NOTE (apply to background/text only, keep all text legible): ${note}`] : []),
+    textToRender,
+    `Subject context (for tone only — do NOT render the person): celebrate ${client}'s new look by stylist ${stylist} for ${brand}.`,
+    "Vertical portrait poster, 1024x1536 (story 9:16).",
+    NEVER_GENERATE,
+    "Output a finished, post-ready RAMP poster background with an EMPTY hero frame ready for subject compositing.",
+  ].join("\n\n");
+}
+
+/**
+ * STAGE 2 of the two-pass RAMP pipeline — composite the LIVE SELFIE as the
+ * final, untouched layer onto the already-finished poster background.
+ *
+ * The face never entered the Stage 1 text/tag pass, so its likeness MUST be
+ * preserved exactly here. This is a pure placement/compositing task.
+ */
+export function buildRampSelfieCompositePrompt(input: {
+  recipientName: string;
+  stylistName: string;
+  capturePath: RampCapturePath;
+  extraNote?: string;
+}): string {
+  const client = String(input.recipientName || "Guest").trim() || "Guest";
+  const stylist = String(input.stylistName || "Stylist").trim() || "Stylist";
+  const note = String(input.extraNote || "").trim();
+  const isClientPath = input.capturePath === "client_path";
+  const subjectPlacement = isClientPath
+    ? "Place the single person from IMAGE 1 inside the empty hero frame of IMAGE 2, matching its scale and lighting."
+    : "Place the people from IMAGE 1 (duo selfie or solo stylist) inside the empty hero frame of IMAGE 2, matching its scale and lighting.";
+
+  return [
+    "You receive TWO images:",
+    "• IMAGE 1 (first): LIVE SELFIE / CAPTURE — the ONLY people allowed in the final poster.",
+    "• IMAGE 2 (second): FINISHED POSTER BACKGROUND — already contains all text, tags, attribution, branding, and graphics, with an EMPTY hero frame.",
+    "TASK: Composite IMAGE 1 into the empty hero frame of IMAGE 2. This is a pure COMPOSITING / placement job — IMAGE 2 is FIXED.",
+    subjectPlacement,
+    "ABSOLUTE FACE LOCK: Do NOT redraw, regenerate, swap, beautify, smooth, slim, age, or restyle the person. Preserve their EXACT face, hair, skin tone, glasses, facial hair, expression, and clothing from IMAGE 1. Only adjust scale, crop, edge feathering, and overall lighting/color match so they sit naturally in the frame.",
+    "DO NOT alter, move, re-spell, regenerate, or cover any existing text, hashtags, tags, attribution, logos, or branding already present in IMAGE 2 — keep that layout identical.",
+    "You MAY apply a believable hair-color pop on the subject's hair ONLY if it does not change facial identity.",
+    ...(note ? [`STYLIST NOTE (must still preserve the selfie face exactly): ${note}`] : []),
+    `Subject context: ${client} with stylist ${stylist}.`,
+    "Vertical portrait poster, 1024x1536 (story 9:16).",
+    NEVER_GENERATE,
+    "Output the finished, post-ready RAMP poster with the REAL person composited in and their likeness perfectly preserved.",
   ].join("\n\n");
 }
 
