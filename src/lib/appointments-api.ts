@@ -11,6 +11,7 @@ export type AppointmentDto = {
   price: number;
   notes: string;
   seriesId: string | null;
+  staffId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -33,6 +34,7 @@ export function toDto(row: SalonxAppointment): AppointmentDto {
     price: row.price,
     notes: row.notes,
     seriesId: row.seriesId,
+    staffId: row.staffId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

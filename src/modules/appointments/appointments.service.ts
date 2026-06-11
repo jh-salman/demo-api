@@ -52,6 +52,7 @@ export const appointmentsService = {
           price: input.price,
           notes: input.notes,
           seriesId: input.seriesId,
+          staffId: input.staffId,
         },
       });
       return toDto(row);
@@ -81,6 +82,7 @@ export const appointmentsService = {
       price?: number;
       notes?: string;
       seriesId?: string | null;
+      staffId?: string | null;
     },
   ) {
     const prisma = getPrismaOrNull();

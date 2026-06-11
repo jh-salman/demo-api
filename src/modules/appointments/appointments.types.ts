@@ -7,4 +7,5 @@ export type CreateAppointmentInput = {
   price: number;
   notes: string;
   seriesId: string | null;
+  staffId: string | null;
 };

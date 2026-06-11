@@ -38,6 +38,7 @@ function parseCreateBody(body: Request["body"]): {
   price: number;
   notes: string;
   seriesId: string | null;
+  staffId: string | null;
 } {
   if (!body || typeof body !== "object") {
     throw new HttpError(400, "Expected JSON object");
@@ -69,8 +70,10 @@ function parseCreateBody(body: Request["body"]): {
     typeof b.notes === "string" ? b.notes.trim().slice(0, 4000) : "";
   const seriesId =
     typeof b.seriesId === "string" && b.seriesId.trim() ? b.seriesId.trim() : null;
+  const staffId =
+    typeof b.staffId === "string" && b.staffId.trim() ? b.staffId.trim() : null;
 
-  return { clientName, service, start, end, color, price, notes, seriesId };
+  return { clientName, service, start, end, color, price, notes, seriesId, staffId };
 }
 
 function parsePatchBody(body: Request["body"]): {
@@ -82,6 +85,7 @@ function parsePatchBody(body: Request["body"]): {
   price?: number;
   notes?: string;
   seriesId?: string | null;
+  staffId?: string | null;
 } {
   if (!body || typeof body !== "object") {
     throw new HttpError(400, "Expected JSON object");
@@ -96,6 +100,7 @@ function parsePatchBody(body: Request["body"]): {
     price?: number;
     notes?: string;
     seriesId?: string | null;
+    staffId?: string | null;
   } = {};
 
   if (typeof b.clientName === "string") {
@@ -123,6 +128,8 @@ function parsePatchBody(body: Request["body"]): {
   if (typeof b.notes === "string") data.notes = b.notes.trim().slice(0, 4000);
   if (b.seriesId === null) data.seriesId = null;
   else if (typeof b.seriesId === "string") data.seriesId = b.seriesId.trim() || null;
+  if (b.staffId === null) data.staffId = null;
+  else if (typeof b.staffId === "string") data.staffId = b.staffId.trim() || null;
 
   if (Object.keys(data).length === 0) {
     throw new HttpError(400, "No fields to update");

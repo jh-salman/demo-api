@@ -9,6 +9,14 @@ export const DEFAULT_CLIENTS = [
   { id: "c-007", name: "Ava Chen", phone: "541-555-0107", email: "ava@example.com", notes: "" },
 ] as const;
 
+/** Salon staff roster — calendar day-view columns. */
+export const DEFAULT_STAFF = [
+  { id: "staff-cristi", name: "Cristi Curls" },
+  { id: "staff-jon", name: "Jon Klein" },
+  { id: "staff-joe", name: "Joe Styles" },
+  { id: "staff-nita", name: "Nita Haredoo" },
+] as const;
+
 export const DEFAULT_SERVICES = [
   { id: "SVC-001", name: "Men's Haircut", price: 35, image: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=400&fit=crop" },
   { id: "SVC-002", name: "Men's Haircut & Style", price: 60, image: "https://images.unsplash.com/photo-1622286342621-4bd786c2447c?w=400&fit=crop" },

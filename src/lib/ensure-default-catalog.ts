@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { getPrisma } from "./prisma.js";
-import { DEFAULT_CLIENTS, DEFAULT_SERVICES } from "../seed/default-catalog.js";
+import { DEFAULT_CLIENTS, DEFAULT_SERVICES, DEFAULT_STAFF } from "../seed/default-catalog.js";
 import { DEFAULT_PRODUCTS } from "../seed/default-products.js";
 import { emitClientsCatalogUpdated } from "../realtime/io.js";
 import { emitServiceCatalogUpdated } from "../realtime/io.js";
@@ -31,6 +31,23 @@ export async function ensureDefaultClientCatalog(): Promise<boolean> {
     stored: true,
     clients: DEFAULT_CLIENTS,
     updatedAt: updated?.updatedAt.toISOString(),
+  });
+  return true;
+}
+
+export async function ensureDefaultStaffCatalog(): Promise<boolean> {
+  const prisma = getPrisma();
+  if (!prisma) return false;
+
+  const row = await prisma.salonxStaffCatalog.findUnique({ where: { id: "default" } });
+  const items = row?.items;
+  if (row && !catalogEmpty(items)) return false;
+
+  const payload = [...DEFAULT_STAFF] as Prisma.InputJsonValue;
+  await prisma.salonxStaffCatalog.upsert({
+    where: { id: "default" },
+    create: { id: "default", items: payload },
+    update: { items: payload },
   });
   return true;
 }

@@ -29,11 +29,13 @@ model SalonxAppointment {
   price      Float    @default(0)
   notes      String   @default("")
   seriesId   String?
+  staffId    String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@index([startAt])
   @@index([endAt])
+  @@index([staffId])
 }
 
 /// Parked + waitlist toolbar rows for salonx-web-v2 (`/api/calendar-toolbar`).
@@ -46,6 +48,13 @@ model SalonxCalendarToolbar {
 
 /// Client picker list (`/api/clients`).
 model SalonxClientCatalog {
+  id        String   @id @default("default")
+  items     Json
+  updatedAt DateTime @updatedAt
+}
+
+/// Staff roster for calendar day columns (`/api/staff`).
+model SalonxStaffCatalog {
   id        String   @id @default("default")
   items     Json
   updatedAt DateTime @updatedAt
