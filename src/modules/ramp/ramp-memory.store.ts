@@ -88,6 +88,12 @@ export const rampMemoryStore = {
     return row;
   },
 
+  listAssets(token: string, source?: string) {
+    return assets
+      .filter((a) => a.token === token && (!source || a.source === source))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
   listRecent(limit = 24): MemoryPost[] {
     const cap = Math.max(1, Math.min(50, limit));
     return Array.from(postsByToken.values())
@@ -111,6 +117,7 @@ export function normalizeStatus(raw: string | null | undefined): RampPostStatus 
     "selfie_received",
     "processing",
     "pending",
+    "pending_pick",
     "generating",
     "ready",
     "posted",

@@ -18,11 +18,16 @@ import {
 } from "./ramp-sms.js";
 import { generateBrandedRampImage, isOpenAiMockMode } from "./ramp-openai.js";
 import { normalizeRampPostStylePreset } from "./ramp-ai-prompts.js";
-import { normalizePhone } from "./ramp-phone.js";
+import { normalizePhone, phonesMatch } from "./ramp-phone.js";
 import type {
   FireClientCareCardRequest,
   FireClientCareCardResponse,
+  InboundMmsRequest,
+  InboundMmsResponse,
+  ParkPickResponse,
+  RampCandidatesResponse,
   RampDemoPostDto,
+  RampLibraryResponse,
   RampPostStatus,
   SendRampSmsResponse,
   StartStylistPostRequest,
@@ -32,8 +37,26 @@ import type {
 } from "./ramp.types.js";
 
 const RAMP_POST_STATUSES = new Set(["ready", "posted", "care_sent", "sent"]);
-const RAMP_QUEUE_STATUSES = new Set(["pending", "generating", "processing", "ready", "failed"]);
+const RAMP_QUEUE_STATUSES = new Set([
+  "pending",
+  "pending_pick",
+  "generating",
+  "processing",
+  "ready",
+  "failed",
+]);
 const activeGenerations = new Set<string>();
+/** Posts still awaiting a selfie — eligible to receive an inbound MMS. */
+const INBOUND_MATCH_STATUSES = [
+  "care_sent",
+  "landing",
+  "selfie_received",
+  "pending",
+  "pending_pick",
+  "generating",
+];
+/** Posts with a built artifact — surfaced in the cloud library. */
+const RAMP_LIBRARY_STATUSES = ["ready", "posted", "sent"];
 
 function isRampPostReady(status: string | null | undefined): boolean {
   return RAMP_POST_STATUSES.has(normalizeStatus(status));
@@ -602,6 +625,168 @@ async function submitRampCaptureImpl(
   return { ok: true, token, status: "generating" };
 }
 
+/** Find the open post a given sender phone most likely belongs to. */
+async function resolveTokenByPhone(phone: string): Promise<string | null> {
+  if (!phone) return null;
+  const prisma = getPrisma();
+  if (prisma) {
+    try {
+      const rows = await prisma.rampDemoPost.findMany({
+        where: { status: { in: INBOUND_MATCH_STATUSES } },
+        orderBy: { updatedAt: "desc" },
+        take: 50,
+      });
+      const hit = rows.find((r) => phonesMatch(r.recipientPhone || "", phone));
+      return hit?.token || null;
+    } catch {
+      /* table missing — fall through to memory store */
+    }
+  }
+  const mem = rampMemoryStore
+    .listRecent(50)
+    .find(
+      (r) =>
+        INBOUND_MATCH_STATUSES.includes(normalizeStatus(r.status)) &&
+        phonesMatch(r.recipientPhone || "", phone),
+    );
+  return mem?.token || null;
+}
+
+/**
+ * Provider-agnostic inbound selfie loop. The magic link sets `token`; a bare
+ * MMS reply sets `phone`/`from` and we resolve the open post. Either way the
+ * selfie feeds the same generation pipeline as an in-app capture.
+ */
+async function ingestInboundMmsImpl(
+  req: Request,
+  body: InboundMmsRequest,
+): Promise<InboundMmsResponse> {
+  const mediaUrl = String(
+    body.mediaUrl || (Array.isArray(body.mediaUrls) ? body.mediaUrls[0] : "") || "",
+  ).trim();
+  if (!mediaUrl) throw new Error("mediaUrl is required");
+
+  const phone = String(body.phone || body.from || "").trim();
+  let token = String(body.token || "").trim();
+  let matchedBy: "token" | "phone" = "token";
+
+  if (!token) {
+    if (!phone) throw new Error("token or phone is required");
+    const resolved = await resolveTokenByPhone(phone);
+    if (!resolved) throw new Error("Unknown RAMP token for inbound phone");
+    token = resolved;
+    matchedBy = "phone";
+  }
+
+  await submitRampCaptureImpl(req, {
+    token,
+    mediaUrl,
+    phone: phone || undefined,
+    source: String(body.source || "mms_in").trim() || "mms_in",
+  });
+
+  return { ok: true, token, status: "generating", matchedBy };
+}
+
+const PENDING_PICK_SOURCE = "pending_pick";
+
+/**
+ * Park several candidate shots from the S4 multi-shot review without committing
+ * a hero. The post becomes `pending_pick` (a "Pick a photo" queue card) and the
+ * shots are retrievable later via {@link listCandidatesImpl}.
+ */
+async function parkPickImpl(
+  token: string,
+  mediaUrls: string[],
+  phone?: string,
+): Promise<ParkPickResponse> {
+  const t = String(token || "").trim();
+  if (!t) throw new Error("token is required");
+  const urls = (Array.isArray(mediaUrls) ? mediaUrls : [])
+    .map((u) => String(u || "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  if (!urls.length) throw new Error("mediaUrls is required");
+  const normPhone = phone ? String(phone).trim() : "";
+
+  const prisma = getPrisma();
+  if (prisma) {
+    const post = await prisma.rampDemoPost.findUnique({ where: { token: t } });
+    if (!post) throw new Error("Unknown RAMP token");
+    await prisma.rampSharedAsset.createMany({
+      data: urls.map((mediaUrl) => ({
+        token: t,
+        brandSlug: post.brandSlug,
+        source: PENDING_PICK_SOURCE,
+        phone: normPhone || null,
+        mediaUrl,
+        cloudinaryUrl: mediaUrl.includes("cloudinary.com") ? mediaUrl : null,
+      })),
+    });
+    await prisma.rampDemoPost.update({
+      where: { token: t },
+      data: {
+        status: "pending_pick",
+        ...(normPhone ? { recipientPhone: normPhone } : {}),
+      },
+    });
+    await recordVisitDb(t, "ramp_pending_pick", { count: urls.length });
+    return { ok: true, token: t, status: "pending_pick", count: urls.length };
+  }
+
+  const post = rampMemoryStore.getPost(t);
+  if (!post) throw new Error("Unknown RAMP token");
+  urls.forEach((mediaUrl) => {
+    rampMemoryStore.storeAsset({
+      token: t,
+      brandSlug: post.brandSlug,
+      source: PENDING_PICK_SOURCE,
+      phone: normPhone || null,
+      mediaUrl,
+      cloudinaryUrl: mediaUrl.includes("cloudinary.com") ? mediaUrl : null,
+    });
+  });
+  rampMemoryStore.updatePost(t, {
+    status: "pending_pick",
+    ...(normPhone ? { recipientPhone: normPhone } : {}),
+  });
+  rampMemoryStore.recordVisit(t, "ramp_pending_pick", { count: urls.length });
+  return { ok: true, token: t, status: "pending_pick", count: urls.length };
+}
+
+/** The parked candidate shots for a `pending_pick` post. */
+async function listCandidatesImpl(token: string): Promise<RampCandidatesResponse> {
+  const t = String(token || "").trim();
+  if (!t) throw new Error("token is required");
+
+  const prisma = getPrisma();
+  if (prisma) {
+    try {
+      const rows = await prisma.rampSharedAsset.findMany({
+        where: { token: t, source: PENDING_PICK_SOURCE },
+        orderBy: { createdAt: "desc" },
+      });
+      return {
+        ok: true,
+        token: t,
+        candidates: rows
+          .filter((r) => r.mediaUrl)
+          .map((r) => ({ mediaUrl: r.mediaUrl as string, createdAt: r.createdAt.toISOString() })),
+      };
+    } catch {
+      /* table missing — fall through to memory store */
+    }
+  }
+  const rows = rampMemoryStore.listAssets(t, PENDING_PICK_SOURCE);
+  return {
+    ok: true,
+    token: t,
+    candidates: rows
+      .filter((r) => r.mediaUrl)
+      .map((r) => ({ mediaUrl: r.mediaUrl as string, createdAt: r.createdAt })),
+  };
+}
+
 async function getPostStatusImpl(req: Request, token: string): Promise<RampDemoPostDto | null> {
   const t = String(token || "").trim();
   if (!t) return null;
@@ -916,6 +1101,12 @@ export const rampService = {
 
   submitRampCapture: submitRampCaptureImpl,
 
+  ingestInboundMms: ingestInboundMmsImpl,
+
+  parkPick: parkPickImpl,
+
+  listCandidates: listCandidatesImpl,
+
   getPostStatus: getPostStatusImpl,
 
   regenerate: regenerateImpl,
@@ -946,7 +1137,14 @@ export const rampService = {
 
   listRecent: async (limit = 24) => {
     const cap = Math.max(1, Math.min(50, Number(limit) || 24));
-    const queueStatuses = ["pending", "generating", "processing", "ready", "failed"];
+    const queueStatuses = [
+      "pending",
+      "pending_pick",
+      "generating",
+      "processing",
+      "ready",
+      "failed",
+    ];
     const prisma = getPrisma();
     if (prisma) {
       try {
@@ -985,6 +1183,53 @@ export const rampService = {
           row.stylistName ||
           "RAMP post",
         status: normalizeStatus(row.status),
+        createdAt: row.createdAt,
+      })),
+    };
+  },
+
+  /** Cloud library — built artifacts (ready/posted/sent), any device. */
+  listLibrary: async (req: Request, limit = 40): Promise<RampLibraryResponse> => {
+    const cap = Math.max(1, Math.min(100, Number(limit) || 40));
+    const prisma = getPrisma();
+    if (prisma) {
+      try {
+        const rows = await prisma.rampDemoPost.findMany({
+          where: { compositeUrl: { not: null }, status: { in: RAMP_LIBRARY_STATUSES } },
+          orderBy: { updatedAt: "desc" },
+          take: cap,
+        });
+        return {
+          ok: true as const,
+          items: rows.map((row) => ({
+            token: row.token,
+            title: row.recipientName || row.recipientPhone || row.stylistName || "RAMP post",
+            caption: row.caption,
+            compositeUrl: row.compositeUrl,
+            status: normalizeStatus(row.status),
+            landingUrl: rampLandingUrl(req, row.token),
+            createdAt: row.createdAt.toISOString(),
+          })),
+        };
+      } catch {
+        /* table missing — fall through to memory store */
+      }
+    }
+    const rows = rampMemoryStore
+      .listRecent(100)
+      .filter(
+        (row) => row.compositeUrl && RAMP_LIBRARY_STATUSES.includes(normalizeStatus(row.status)),
+      )
+      .slice(0, cap);
+    return {
+      ok: true as const,
+      items: rows.map((row) => ({
+        token: row.token,
+        title: row.recipientName || row.recipientPhone || row.stylistName || "RAMP post",
+        caption: row.caption,
+        compositeUrl: row.compositeUrl,
+        status: normalizeStatus(row.status),
+        landingUrl: row.landingUrl,
         createdAt: row.createdAt,
       })),
     };

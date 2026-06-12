@@ -4,6 +4,7 @@ export type RampPostStatus =
   | "selfie_received"
   | "processing"
   | "pending"
+  | "pending_pick"
   | "generating"
   | "ready"
   | "posted"
@@ -94,6 +95,61 @@ export type SendRampSmsResponse = {
     provider?: string;
     sid?: string;
   };
+};
+
+/**
+ * Provider-agnostic inbound MMS / magic-link selfie. Map any SMS provider's
+ * inbound webhook onto this shape: a media URL plus either the RAMP `token`
+ * (when the magic link carried it) or the sender `phone`/`from` to resolve it.
+ */
+export type InboundMmsRequest = {
+  token?: string;
+  phone?: string;
+  from?: string;
+  mediaUrl?: string;
+  mediaUrls?: string[];
+  source?: string;
+};
+
+export type InboundMmsResponse = {
+  ok: true;
+  token: string;
+  status: "generating";
+  matchedBy: "token" | "phone";
+};
+
+export type RampLibraryItem = {
+  token: string;
+  title: string;
+  caption: string | null;
+  compositeUrl: string | null;
+  status: RampPostStatus;
+  landingUrl: string;
+  createdAt: string;
+};
+
+export type RampLibraryResponse = {
+  ok: true;
+  items: RampLibraryItem[];
+};
+
+/** Park several candidate shots without committing a hero (S4 multi-shot review). */
+export type ParkPickRequest = {
+  mediaUrls?: string[];
+  phone?: string;
+};
+
+export type ParkPickResponse = {
+  ok: true;
+  token: string;
+  status: "pending_pick";
+  count: number;
+};
+
+export type RampCandidatesResponse = {
+  ok: true;
+  token: string;
+  candidates: Array<{ mediaUrl: string; createdAt: string }>;
 };
 
 export type FireClientCareCardRequest = {

@@ -6,6 +6,8 @@ import type {
   StoreSharedSelfieRequest,
   StartStylistPostRequest,
   FireClientCareCardRequest,
+  InboundMmsRequest,
+  ParkPickRequest,
   UpdateRampRecipientRequest,
 } from "./ramp.types.js";
 
@@ -64,6 +66,27 @@ export const rampController = {
     res.json({ ok: true, ...(await rampService.listRecent(limit)) });
   }),
 
+  listLibrary: asyncHandler(async (req: Request, res: Response) => {
+    const limit = Number(req.query.limit) || 40;
+    res.json(await rampService.listLibrary(req, limit));
+  }),
+
+  mmsIn: asyncHandler(async (req: Request, res: Response) => {
+    const body = req.body as InboundMmsRequest;
+    if (!body || typeof body !== "object") {
+      throw new HttpError(400, "Expected JSON object");
+    }
+    try {
+      res.json(await rampService.ingestInboundMms(req, body));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "mms-in failed";
+      if (msg.includes("Unknown RAMP") || msg.includes("required")) {
+        throw new HttpError(400, msg);
+      }
+      throw new HttpError(500, msg);
+    }
+  }),
+
   submitRampCapture: asyncHandler(async (req: Request, res: Response) => {
     const body = req.body as StoreSharedSelfieRequest;
     if (!body || typeof body !== "object") {
@@ -78,6 +101,33 @@ export const rampController = {
       }
       throw new HttpError(500, msg);
     }
+  }),
+
+  parkPick: asyncHandler(async (req: Request, res: Response) => {
+    const token = String(req.params.token || "").trim();
+    if (!token) throw new HttpError(400, "token required");
+    const body = (req.body && typeof req.body === "object" ? req.body : {}) as ParkPickRequest;
+    try {
+      res.json(
+        await rampService.parkPick(
+          token,
+          Array.isArray(body.mediaUrls) ? body.mediaUrls : [],
+          typeof body.phone === "string" ? body.phone : undefined,
+        ),
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "park-pick failed";
+      if (msg.includes("Unknown RAMP") || msg.includes("required")) {
+        throw new HttpError(400, msg);
+      }
+      throw new HttpError(500, msg);
+    }
+  }),
+
+  listCandidates: asyncHandler(async (req: Request, res: Response) => {
+    const token = String(req.params.token || "").trim();
+    if (!token) throw new HttpError(400, "token required");
+    res.json(await rampService.listCandidates(token));
   }),
 
   getStatus: asyncHandler(async (req: Request, res: Response) => {

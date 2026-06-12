@@ -5,7 +5,10 @@ import { rampController } from "./ramp.controller.js";
 export const rampRouter = Router();
 
 rampRouter.get("/recent", rampController.listRecent);
+rampRouter.get("/library", rampController.listLibrary);
 rampRouter.post("/submit-capture", rampController.submitRampCapture);
+rampRouter.post("/:token/park-pick", rampController.parkPick);
+rampRouter.get("/:token/candidates", rampController.listCandidates);
 rampRouter.get("/status/:token", rampController.getStatus);
 rampRouter.post("/:token/dismiss-queue", rampController.dismissFromQueue);
 rampRouter.post("/:token/regenerate", rampController.regenerate);
