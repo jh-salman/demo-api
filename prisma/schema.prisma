@@ -102,6 +102,20 @@ model RampDemoPost {
   careCardUrl    String?
   compositeUrl   String?
   caption        String?
+  aiCaptionDraft String?
+  backgroundPosterUrl String?
+  stylistStyleReferenceUrl String?
+  clientStyleReferenceUrl String?
+  capturePath    String   @default("stylist_path")
+  postStyle      String   @default("curiosity")
+  postType       String   @default("Curiosity")
+  tags           Json     @default("[]")
+  links          Json     @default("[]")
+  visualDirection String  @default("raw")
+  imageEdit      String   @default("hair_color_pop")
+  brandLayer     String   @default("active_brand")
+  compositeMode  String   @default("deterministic")
+  armed          Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

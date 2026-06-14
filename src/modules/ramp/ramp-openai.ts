@@ -105,7 +105,7 @@ async function fetchImageBuffer(url: string): Promise<Buffer> {
   return buffer;
 }
 
-async function uploadGeneratedBuffer(
+export async function uploadGeneratedBuffer(
   buffer: Buffer,
   reqOrigin?: string,
 ): Promise<string> {

@@ -11,6 +11,8 @@ export type RampPostStatus =
   | "sent"
   | "failed";
 
+export type RampTagDto = { label: string; on: boolean };
+
 export type RampDemoPostDto = {
   token: string;
   brandSlug: string;
@@ -23,9 +25,84 @@ export type RampDemoPostDto = {
   careCardUrl: string | null;
   compositeUrl: string | null;
   caption: string | null;
+  aiCaptionDraft: string | null;
+  backgroundPosterUrl: string | null;
+  stylistStyleReferenceUrl: string | null;
+  clientStyleReferenceUrl: string | null;
+  capturePath: string;
+  postStyle: string;
+  postType: string;
+  tags: RampTagDto[];
+  links: string[];
+  visualDirection: string;
+  imageEdit: string;
+  brandLayer: string;
+  compositeMode: string;
+  armed: boolean;
   landingUrl: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type RampQueueItemDto = {
+  id: string;
+  token: string;
+  title: string;
+  status: RampPostStatus;
+  postType: string;
+  armed: boolean;
+  compositeUrl: string | null;
+  createdAt: string;
+};
+
+export type RampBackgroundOptionDto = {
+  id: string;
+  label: string;
+  url: string;
+  isDefault?: boolean;
+};
+
+export type PatchRampDraftRequest = {
+  caption?: string;
+  aiCaptionDraft?: string;
+  tags?: RampTagDto[] | string[];
+  links?: string[] | Array<{ url: string; inherited?: boolean }>;
+  postType?: string;
+  postStyle?: string;
+  backgroundPosterUrl?: string;
+  stylistStyleReferenceUrl?: string;
+  clientStyleReferenceUrl?: string;
+  capturePath?: string;
+  visualDirection?: string;
+  imageEdit?: string;
+  brandLayer?: string;
+  compositeMode?: string;
+  armed?: boolean;
+};
+
+export type CompositeRampRequest = {
+  selfieUrl?: string;
+  backgroundPosterUrl?: string;
+  mode?: "deterministic" | "ai";
+};
+
+export type CompositeRampResponse = {
+  ok: true;
+  token: string;
+  status: RampPostStatus;
+  compositeUrl: string;
+  mode: string;
+};
+
+export type RegenerateRampRequest = {
+  note?: string;
+  visualDirection?: string;
+  imageEdit?: string;
+  postStyle?: string;
+  postType?: string;
+  backgroundPosterUrl?: string;
+  selfieUrl?: string;
+  mode?: "deterministic" | "ai";
 };
 
 export type UpdateRampRecipientRequest = {

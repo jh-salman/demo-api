@@ -16,19 +16,40 @@ import {
   rampPublicBaseUrl,
   sendRampSms,
 } from "./ramp-sms.js";
-import { generateBrandedRampImage, isOpenAiMockMode } from "./ramp-openai.js";
+import { generateBrandedRampImage, isOpenAiMockMode, uploadGeneratedBuffer } from "./ramp-openai.js";
 import { normalizeRampPostStylePreset } from "./ramp-ai-prompts.js";
 import { normalizePhone, phonesMatch } from "./ramp-phone.js";
+import { compositeRampPoster } from "./ramp-composite.js";
+import {
+  resolveRampBrandDefaults,
+  saveRampBackgroundToBrand,
+} from "./ramp-brand-config.js";
+import {
+  captionTagsForBuild,
+  dtoFromRampRow,
+  buildDraftPatchData,
+  tagsFromStored,
+  rampMemoryPostDefaults,
+} from "./ramp-post-dto.js";
+import {
+  isArmedPostType,
+  normalizePostTypeLabel,
+  normalizeLinksInput,
+  postTypeToPostStyle,
+} from "./ramp-post-fields.js";
 import type {
+  CompositeRampResponse,
   FireClientCareCardRequest,
   FireClientCareCardResponse,
   InboundMmsRequest,
   InboundMmsResponse,
   ParkPickResponse,
+  PatchRampDraftRequest,
   RampCandidatesResponse,
   RampDemoPostDto,
   RampLibraryResponse,
   RampPostStatus,
+  RegenerateRampRequest,
   SendRampSmsResponse,
   StartStylistPostRequest,
   StartStylistPostResponse,
@@ -66,59 +87,177 @@ function isRampQueueItem(status: string | null | undefined): boolean {
   return RAMP_QUEUE_STATUSES.has(normalizeStatus(status));
 }
 
-function dtoFromRow(row: {
-  token: string;
-  brandSlug: string;
-  recipientPhone: string;
-  recipientName: string;
-  stylistName: string;
-  products: unknown;
-  status: string;
-  sourceType: string;
-  careCardUrl: string | null;
-  compositeUrl: string | null;
-  caption: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  landingUrl: string;
-}): RampDemoPostDto {
+function toPostDto(
+  req: Request,
+  row: Parameters<typeof dtoFromRampRow>[0],
+): RampDemoPostDto {
+  return dtoFromRampRow(
+    { ...row, landingUrl: row.landingUrl || rampLandingUrl(req, row.token) },
+    normalizeStatus,
+  );
+}
+
+async function mergePostWithVisitMeta(
+  token: string,
+  row: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const meta = (await readBoltStartPromptMeta(token)) || {};
   return {
-    token: row.token,
-    brandSlug: row.brandSlug,
-    recipientPhone: row.recipientPhone,
-    recipientName: row.recipientName,
-    stylistName: row.stylistName,
-    products: normalizeProducts(row.products),
-    status: normalizeStatus(row.status),
-    sourceType: row.sourceType,
-    careCardUrl: row.careCardUrl,
-    compositeUrl: row.compositeUrl,
-    caption: row.caption,
-    landingUrl: row.landingUrl,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    ...row,
+    backgroundPosterUrl:
+      row.backgroundPosterUrl ??
+      (typeof meta.backgroundPosterUrl === "string" ? meta.backgroundPosterUrl : null),
+    stylistStyleReferenceUrl:
+      row.stylistStyleReferenceUrl ??
+      (typeof meta.stylistStyleReferenceUrl === "string"
+        ? meta.stylistStyleReferenceUrl
+        : null),
+    clientStyleReferenceUrl:
+      row.clientStyleReferenceUrl ??
+      (typeof meta.clientStyleReferenceUrl === "string"
+        ? meta.clientStyleReferenceUrl
+        : null),
+    capturePath:
+      row.capturePath ??
+      (typeof meta.capturePath === "string" ? meta.capturePath : "stylist_path"),
+    postStyle:
+      row.postStyle ?? (typeof meta.postStyle === "string" ? meta.postStyle : "curiosity"),
+    visualDirection:
+      row.visualDirection ??
+      (typeof meta.visualDirection === "string" ? meta.visualDirection : "raw"),
+    imageEdit:
+      row.imageEdit ?? (typeof meta.imageEdit === "string" ? meta.imageEdit : "hair_color_pop"),
+    brandLayer:
+      row.brandLayer ?? (typeof meta.brandLayer === "string" ? meta.brandLayer : "active_brand"),
+    tags: row.tags ?? (Array.isArray(meta.tags) ? meta.tags : []),
+    links: row.links ?? (Array.isArray(meta.links) ? meta.links : []),
   };
 }
 
-function dtoFromMemory(row: ReturnType<typeof rampMemoryStore.getPost>): RampDemoPostDto | null {
-  if (!row) return null;
-  return {
-    token: row.token,
-    brandSlug: row.brandSlug,
-    recipientPhone: row.recipientPhone,
-    recipientName: row.recipientName,
-    stylistName: row.stylistName,
-    products: normalizeProducts(row.products),
-    status: normalizeStatus(row.status),
-    sourceType: row.sourceType,
-    careCardUrl: row.careCardUrl,
-    compositeUrl: row.compositeUrl,
-    caption: row.caption,
-    landingUrl: row.landingUrl,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
+async function resolveBackgroundPosterUrl(
+  token: string,
+  row: {
+    brandSlug?: string;
+    backgroundPosterUrl?: string | null;
+  } | null,
+  override?: string,
+): Promise<string> {
+  const direct = String(override || row?.backgroundPosterUrl || "").trim();
+  if (direct) return direct;
+  const meta = await readBoltStartPromptMeta(token);
+  const fromMeta = String(meta?.backgroundPosterUrl || "").trim();
+  if (fromMeta) return fromMeta;
+  const brandDefaults = await resolveRampBrandDefaults(row?.brandSlug);
+  return brandDefaults.defaultBackgroundPosterUrl;
 }
+
+type RampGenerationOverrides = {
+  visualDirection?: string;
+  imageEdit?: string;
+  extraNote?: string;
+  backgroundPosterUrl?: string;
+  postStyle?: string;
+  postType?: string;
+  mode?: "deterministic" | "ai";
+  selfieUrl?: string;
+};
+
+async function runDeterministicComposite(
+  req: Request,
+  _token: string,
+  selfieUrl: string,
+  backgroundUrl: string,
+): Promise<string> {
+  const buffer = await compositeRampPoster({
+    backgroundUrl,
+    selfieUrl,
+  });
+  return uploadGeneratedBuffer(buffer, requestOrigin(req));
+}
+
+async function generateRampArtifact(
+  req: Request,
+  token: string,
+  rawMediaUrl: string,
+  postRow: RampPostGenerationMeta | null,
+  overrides?: RampGenerationOverrides,
+): Promise<{ imageUrl: string; mock: boolean; usedFallback?: boolean; mode: string }> {
+  const promptMeta = (await readBoltStartPromptMeta(token)) || {};
+  const backgroundUrl = await resolveBackgroundPosterUrl(token, postRow, overrides?.backgroundPosterUrl);
+  const brandDefaults = await resolveRampBrandDefaults(postRow?.brandSlug);
+  const rowMode = String(postRow?.compositeMode || "").trim().toLowerCase();
+  const envMode = brandDefaults.compositeMode;
+  const reqMode = String(overrides?.mode || "").trim().toLowerCase();
+  const mode =
+    reqMode === "ai" || reqMode === "deterministic"
+      ? reqMode
+      : rowMode === "ai" || rowMode === "deterministic"
+        ? rowMode
+        : envMode;
+
+  if (mode !== "ai" && backgroundUrl) {
+    try {
+      const imageUrl = await runDeterministicComposite(req, token, rawMediaUrl, backgroundUrl);
+      return { imageUrl, mock: false, mode: "deterministic" };
+    } catch (e) {
+      console.warn("[ramp:composite] deterministic failed — trying AI fallback", e);
+      if (mode === "deterministic" && envMode === "deterministic") {
+        throw e;
+      }
+    }
+  }
+
+  if (isOpenAiMockMode()) {
+    return { imageUrl: rawMediaUrl, mock: true, mode: "mock" };
+  }
+
+  const postStyle = normalizeRampPostStylePreset(
+    overrides?.postStyle ||
+      postRow?.postStyle ||
+      postTypeToPostStyle(overrides?.postType || postRow?.postType) ||
+      String(postRow?.sourceType || "ramp_photo").replace(/^ramp_/, "") ||
+      "curiosity",
+  );
+
+  const { imageUrl, mock, usedFallback } = await generateBrandedRampImage({
+    sourceImageUrl: rawMediaUrl,
+    postStyle,
+    recipientName: postRow?.recipientName || "",
+    stylistName: postRow?.stylistName || RAMP_DEMO_PROFILE.stylistName,
+    brandSlug: postRow?.brandSlug || RAMP_DEMO_PROFILE.brandSlug,
+    reqOrigin: requestOrigin(req),
+    capturePath: typeof promptMeta.capturePath === "string" ? promptMeta.capturePath : undefined,
+    visualDirection:
+      overrides?.visualDirection ||
+      postRow?.visualDirection ||
+      (typeof promptMeta.visualDirection === "string" ? promptMeta.visualDirection : undefined),
+    imageEdit:
+      overrides?.imageEdit ||
+      postRow?.imageEdit ||
+      (typeof promptMeta.imageEdit === "string" ? promptMeta.imageEdit : undefined),
+    brandLayer:
+      postRow?.brandLayer ||
+      (typeof promptMeta.brandLayer === "string" ? promptMeta.brandLayer : undefined),
+    captureType: typeof promptMeta.captureType === "string" ? promptMeta.captureType : undefined,
+    extraNote: overrides?.extraNote,
+    referencePosterUrl:
+      typeof promptMeta.referencePosterUrl === "string" ? promptMeta.referencePosterUrl : undefined,
+    backgroundPosterUrl: backgroundUrl || undefined,
+    stylistStyleReferenceUrl:
+      postRow?.stylistStyleReferenceUrl ||
+      (typeof promptMeta.stylistStyleReferenceUrl === "string"
+        ? promptMeta.stylistStyleReferenceUrl
+        : undefined),
+    clientStyleReferenceUrl:
+      postRow?.clientStyleReferenceUrl ||
+      (typeof promptMeta.clientStyleReferenceUrl === "string"
+        ? promptMeta.clientStyleReferenceUrl
+        : undefined),
+  });
+
+  return { imageUrl, mock, usedFallback, mode: "ai" };
+}
+
 
 async function recordVisitDb(token: string, eventType: string, metadata?: unknown) {
   const prisma = getPrisma();
@@ -268,12 +407,21 @@ async function startStylistPostImpl(
   const visualDirection = String(body.visualDirection || "raw").trim() || "raw";
   const imageEdit = String(body.imageEdit || "hair_color_pop").trim() || "hair_color_pop";
   const brandLayer = String(body.brandLayer || "active_brand").trim() || "active_brand";
+  const brandDefaults = await resolveRampBrandDefaults(brandSlug);
+  const backgroundPosterUrl =
+    String(body.backgroundPosterUrl || "").trim() ||
+    brandDefaults.defaultBackgroundPosterUrl;
+  const stylistStyleReferenceUrl =
+    String(body.stylistStyleReferenceUrl || "").trim() ||
+    brandDefaults.stylistStyleReferenceUrl;
+  const clientStyleReferenceUrl =
+    String(body.clientStyleReferenceUrl || "").trim() ||
+    brandDefaults.clientStyleReferenceUrl;
   const referencePosterUrl = String(body.referencePosterUrl || "").trim();
-  const backgroundPosterUrl = String(body.backgroundPosterUrl || "").trim();
-  const stylistStyleReferenceUrl = String(body.stylistStyleReferenceUrl || "").trim();
-  const clientStyleReferenceUrl = String(body.clientStyleReferenceUrl || "").trim();
   const tags = normalizeTags(body.tags);
   const links = normalizeLinks(body.links);
+  const tagDtos = tags.map((label) => ({ label, on: true }));
+  const postType = normalizePostTypeLabel(body.postStyle ? undefined : "Curiosity");
   const sourceType = `ramp_${captureType}`;
   const landingUrl = rampLandingUrl(req, token);
   const caption = buildDemoCaption({
@@ -298,23 +446,41 @@ async function startStylistPostImpl(
     clientStyleReferenceUrl: clientStyleReferenceUrl || undefined,
     tags,
     links,
+    postType,
+    compositeMode: brandDefaults.compositeMode,
+  };
+
+  const postCreateData = {
+    token,
+    brandSlug,
+    recipientPhone,
+    recipientName,
+    stylistName,
+    products,
+    status: "processing" as const,
+    sourceType,
+    caption,
+    aiCaptionDraft: caption,
+    backgroundPosterUrl: backgroundPosterUrl || null,
+    stylistStyleReferenceUrl: stylistStyleReferenceUrl || null,
+    clientStyleReferenceUrl: clientStyleReferenceUrl || null,
+    capturePath,
+    postStyle,
+    postType,
+    tags: tagDtos,
+    links,
+    visualDirection,
+    imageEdit,
+    brandLayer,
+    compositeMode: brandDefaults.compositeMode,
+    armed: isArmedPostType(postType),
   };
 
   const prisma = getPrisma();
   if (prisma) {
     try {
       await prisma.rampDemoPost.create({
-        data: {
-          token,
-          brandSlug,
-          recipientPhone,
-          recipientName,
-          stylistName,
-          products,
-          status: "processing",
-          sourceType,
-          caption,
-        },
+        data: postCreateData,
       });
       await recordVisitDb(token, "ramp_bolt_start", visitMeta);
       return { ok: true, token, landingUrl, status: "processing" };
@@ -324,17 +490,9 @@ async function startStylistPostImpl(
   }
 
   rampMemoryStore.createPost({
-    token,
-    brandSlug,
-    recipientPhone,
-    recipientName,
-    stylistName,
-    products,
-    status: "processing",
-    sourceType,
+    ...postCreateData,
     careCardUrl: null,
     compositeUrl: null,
-    caption,
     landingUrl,
   });
   rampMemoryStore.recordVisit(token, "ramp_bolt_start", visitMeta);
@@ -342,17 +500,7 @@ async function startStylistPostImpl(
   return { ok: true, token, landingUrl, status: "processing" };
 }
 
-async function updatePostStatus(
-  token: string,
-  patch: {
-    status?: RampPostStatus;
-    compositeUrl?: string | null;
-    caption?: string | null;
-    careCardUrl?: string | null;
-    recipientPhone?: string;
-    recipientName?: string;
-  },
-) {
+async function updatePostStatus(token: string, patch: Record<string, unknown>) {
   const prisma = getPrisma();
   if (prisma) {
     try {
@@ -389,12 +537,6 @@ async function readBoltStartPromptMeta(
   return rampMemoryStore.getVisitMetadata(token, "ramp_bolt_start");
 }
 
-type RampGenerationOverrides = {
-  visualDirection?: string;
-  imageEdit?: string;
-  extraNote?: string;
-};
-
 type RampPostGenerationMeta = {
   recipientName: string;
   stylistName: string;
@@ -402,6 +544,17 @@ type RampPostGenerationMeta = {
   sourceType: string;
   brandSlug: string;
   caption: string | null;
+  postStyle?: string | null;
+  postType?: string | null;
+  backgroundPosterUrl?: string | null;
+  stylistStyleReferenceUrl?: string | null;
+  clientStyleReferenceUrl?: string | null;
+  visualDirection?: string | null;
+  imageEdit?: string | null;
+  brandLayer?: string | null;
+  compositeMode?: string | null;
+  tags?: unknown;
+  links?: unknown;
 };
 
 async function readPostForGeneration(token: string): Promise<RampPostGenerationMeta | null> {
@@ -420,8 +573,13 @@ async function readPostForGeneration(token: string): Promise<RampPostGenerationM
 
 function buildCaptionForPost(postRow: RampPostGenerationMeta): string {
   const postStyle = normalizeRampPostStylePreset(
-    String(postRow.sourceType || "ramp_photo").replace(/^ramp_/, "") || "curiosity",
+    postRow.postStyle ||
+      postTypeToPostStyle(postRow.postType) ||
+      String(postRow.sourceType || "ramp_photo").replace(/^ramp_/, "") ||
+      "curiosity",
   );
+  const tagList = captionTagsForBuild(tagsFromStored(postRow.tags));
+  const linkList = normalizeLinksInput(postRow.links);
   return (
     postRow.caption ||
     buildDemoCaption({
@@ -429,6 +587,8 @@ function buildCaptionForPost(postRow: RampPostGenerationMeta): string {
       stylistName: postRow.stylistName,
       products: normalizeProducts(postRow.products),
       postStyle,
+      tags: tagList,
+      links: linkList,
     })
   );
 }
@@ -481,49 +641,19 @@ async function runGenerationJob(
       postRow = rampMemoryStore.getPost(token);
     }
 
-    const postStyle = normalizeRampPostStylePreset(
-      String(postRow?.sourceType || "ramp_photo").replace(/^ramp_/, "") || "curiosity",
+    const { imageUrl, mock, usedFallback, mode } = await generateRampArtifact(
+      req,
+      token,
+      rawMediaUrl,
+      postRow,
+      overrides,
     );
-    const promptMeta = (await readBoltStartPromptMeta(token)) || {};
-    const { imageUrl, mock, usedFallback } = await generateBrandedRampImage({
-      sourceImageUrl: rawMediaUrl,
-      postStyle,
-      recipientName: postRow?.recipientName || "",
-      stylistName: postRow?.stylistName || RAMP_DEMO_PROFILE.stylistName,
-      brandSlug: postRow?.brandSlug || RAMP_DEMO_PROFILE.brandSlug,
-      reqOrigin: requestOrigin(req),
-      capturePath: typeof promptMeta.capturePath === "string" ? promptMeta.capturePath : undefined,
-      visualDirection:
-        overrides?.visualDirection ||
-        (typeof promptMeta.visualDirection === "string" ? promptMeta.visualDirection : undefined),
-      imageEdit:
-        overrides?.imageEdit ||
-        (typeof promptMeta.imageEdit === "string" ? promptMeta.imageEdit : undefined),
-      brandLayer: typeof promptMeta.brandLayer === "string" ? promptMeta.brandLayer : undefined,
-      captureType: typeof promptMeta.captureType === "string" ? promptMeta.captureType : undefined,
-      extraNote: overrides?.extraNote,
-      referencePosterUrl:
-        typeof promptMeta.referencePosterUrl === "string"
-          ? promptMeta.referencePosterUrl
-          : undefined,
-      backgroundPosterUrl:
-        typeof promptMeta.backgroundPosterUrl === "string"
-          ? promptMeta.backgroundPosterUrl
-          : undefined,
-      stylistStyleReferenceUrl:
-        typeof promptMeta.stylistStyleReferenceUrl === "string"
-          ? promptMeta.stylistStyleReferenceUrl
-          : undefined,
-      clientStyleReferenceUrl:
-        typeof promptMeta.clientStyleReferenceUrl === "string"
-          ? promptMeta.clientStyleReferenceUrl
-          : undefined,
-    });
 
     await completeGenerationReady(token, rawMediaUrl, postRow, imageUrl, {
       imageUrl,
       mock,
       usedFallback: Boolean(usedFallback),
+      mode,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "generation error";
@@ -796,18 +926,18 @@ async function getPostStatusImpl(req: Request, token: string): Promise<RampDemoP
     try {
       const row = await prisma.rampDemoPost.findUnique({ where: { token: t } });
       if (row) {
-        return dtoFromRow({
-          ...row,
-          landingUrl: rampLandingUrl(req, row.token),
-        });
+        const merged = await mergePostWithVisitMeta(t, row as Record<string, unknown>);
+        return toPostDto(req, merged as Parameters<typeof dtoFromRampRow>[0]);
       }
-      // Not in DB — fall through to the memory store (created during outage).
     } catch {
       /* DB unreachable — fall through to memory store */
     }
   }
 
-  return dtoFromMemory(rampMemoryStore.getPost(t));
+  const mem = rampMemoryStore.getPost(t);
+  if (!mem) return null;
+  const merged = await mergePostWithVisitMeta(t, mem as unknown as Record<string, unknown>);
+  return toPostDto(req, merged as Parameters<typeof dtoFromRampRow>[0]);
 }
 
 async function updateRecipientImpl(
@@ -832,18 +962,14 @@ async function updateRecipientImpl(
     try {
       const row = await prisma.rampDemoPost.findUnique({ where: { token: t } });
       if (!row) throw new Error("Unknown RAMP token");
-      const updated = await prisma.rampDemoPost.update({
+      await prisma.rampDemoPost.update({
         where: { token: t },
         data: patch,
       });
       await recordVisitDb(t, "ramp_recipient_set", patch);
-      return {
-        ok: true,
-        post: dtoFromRow({
-          ...updated,
-          landingUrl: rampLandingUrl(req, updated.token),
-        }),
-      };
+      const post = await getPostStatusImpl(req, t);
+      if (!post) throw new Error("Unknown RAMP token");
+      return { ok: true, post };
     } catch (e) {
       if (e instanceof Error && e.message.includes("Unknown RAMP")) throw e;
       /* fall through to memory store */
@@ -854,15 +980,128 @@ async function updateRecipientImpl(
   if (!mem) throw new Error("Unknown RAMP token");
   rampMemoryStore.updatePost(t, patch);
   rampMemoryStore.recordVisit(t, "ramp_recipient_set", patch);
-  const post = dtoFromMemory(rampMemoryStore.getPost(t));
+  const post = await getPostStatusImpl(req, t);
   if (!post) throw new Error("Unknown RAMP token");
   return { ok: true, post };
+}
+
+async function patchDraftImpl(
+  req: Request,
+  token: string,
+  body: PatchRampDraftRequest,
+): Promise<{ ok: true; post: RampDemoPostDto }> {
+  const t = String(token || "").trim();
+  if (!t) throw new Error("token is required");
+
+  const patch = buildDraftPatchData({
+    caption: body.caption,
+    aiCaptionDraft: body.aiCaptionDraft,
+    tags: body.tags,
+    links: body.links,
+    postType: body.postType,
+    postStyle: body.postStyle || (body.postType ? postTypeToPostStyle(body.postType) : undefined),
+    backgroundPosterUrl: body.backgroundPosterUrl,
+    stylistStyleReferenceUrl: body.stylistStyleReferenceUrl,
+    clientStyleReferenceUrl: body.clientStyleReferenceUrl,
+    capturePath: body.capturePath,
+    visualDirection: body.visualDirection,
+    imageEdit: body.imageEdit,
+    brandLayer: body.brandLayer,
+    compositeMode: body.compositeMode,
+    armed: body.armed,
+  });
+
+  if (!Object.keys(patch).length) throw new Error("No draft fields to update");
+
+  const updated = await updatePostStatus(t, patch);
+  if (!updated) throw new Error("Unknown RAMP token");
+
+  await recordVisitDb(t, "ramp_draft_patch", patch);
+  const post = await getPostStatusImpl(req, t);
+  if (!post) throw new Error("Unknown RAMP token");
+  return { ok: true, post };
+}
+
+async function compositeImpl(
+  req: Request,
+  token: string,
+  body: { selfieUrl?: string; backgroundPosterUrl?: string; mode?: "deterministic" | "ai" },
+): Promise<CompositeRampResponse> {
+  const t = String(token || "").trim();
+  if (!t) throw new Error("token is required");
+
+  const post = await getPostStatusImpl(req, t);
+  if (!post) throw new Error("Unknown RAMP token");
+
+  const selfieUrl = String(body.selfieUrl || post.careCardUrl || "").trim();
+  if (!selfieUrl) throw new Error("No source selfie — capture or upload a photo first.");
+
+  const backgroundUrl = await resolveBackgroundPosterUrl(t, post, body.backgroundPosterUrl);
+  if (!backgroundUrl && (body.mode || post.compositeMode) !== "ai") {
+    throw new Error("No background poster configured — set brand.ramp default or upload a background.");
+  }
+
+  await updatePostStatus(t, { status: "generating", compositeUrl: null });
+
+  const postRow = await readPostForGeneration(t);
+  const { imageUrl, mode } = await generateRampArtifact(req, t, selfieUrl, postRow, {
+    backgroundPosterUrl: backgroundUrl || body.backgroundPosterUrl,
+    mode: body.mode || "deterministic",
+    selfieUrl,
+  });
+
+  await completeGenerationReady(t, selfieUrl, postRow, imageUrl, {
+    imageUrl,
+    mode,
+    deterministic: mode === "deterministic",
+  });
+
+  return { ok: true, token: t, status: "ready", compositeUrl: imageUrl, mode };
+}
+
+async function listBackgroundsImpl(brandSlug?: string) {
+  const defaults = await resolveRampBrandDefaults(brandSlug);
+  return { ok: true as const, items: defaults.backgrounds };
+}
+
+async function saveBackgroundImpl(
+  req: Request,
+  body: { brandSlug?: string; url?: string; label?: string; setAsDefault?: boolean },
+) {
+  const url = String(body.url || "").trim();
+  if (!url) throw new Error("url is required");
+  const saved = await saveRampBackgroundToBrand({
+    brandSlug: typeof body.brandSlug === "string" ? body.brandSlug : undefined,
+    url,
+    label: typeof body.label === "string" ? body.label : undefined,
+    setAsDefault: body.setAsDefault,
+  });
+  await broadcastRampBrandConfig(req);
+  return {
+    ok: true as const,
+    defaultBackgroundPosterUrl: saved.defaultBackgroundPosterUrl,
+    items: saved.items,
+  };
+}
+
+async function broadcastRampBrandConfig(req: Request) {
+  const { readConfigForLiveApp } = await import("../../lib/store.js");
+  const { configJsonWithMeta } = await import("../../lib/config-response.js");
+  const { emitConfigUpdated } = await import("../../realtime/io.js");
+  const live = await readConfigForLiveApp();
+  const liveBody = configJsonWithMeta(live.config, req, live.webProjectionRevision);
+  emitConfigUpdated({
+    scope: "published",
+    revision: live.revision,
+    webProjectionRevision: live.webProjectionRevision,
+    data: liveBody,
+  });
 }
 
 async function regenerateImpl(
   req: Request,
   token: string,
-  opts?: { note?: string; visualDirection?: string; imageEdit?: string },
+  opts?: RegenerateRampRequest,
 ): Promise<{ ok: true; token: string; status: RampPostStatus }> {
   const t = String(token || "").trim();
   if (!t) throw new Error("token is required");
@@ -870,23 +1109,43 @@ async function regenerateImpl(
   const post = await getPostStatusImpl(req, t);
   if (!post) throw new Error("Unknown RAMP token");
 
-  const rawMediaUrl = String(post.careCardUrl || "").trim();
+  const rawMediaUrl = String(opts?.selfieUrl || post.careCardUrl || "").trim();
   if (!rawMediaUrl) {
     throw new Error("No source capture to regenerate from — re-run capture from Screen 2.");
   }
 
   const note = String(opts?.note || "").trim();
+  const draftPatch = buildDraftPatchData({
+    postType: opts?.postType,
+    postStyle: opts?.postStyle || (opts?.postType ? postTypeToPostStyle(opts.postType) : undefined),
+    backgroundPosterUrl: opts?.backgroundPosterUrl,
+    visualDirection: opts?.visualDirection,
+    imageEdit: opts?.imageEdit,
+    compositeMode: opts?.mode,
+  });
+  if (Object.keys(draftPatch).length) {
+    await updatePostStatus(t, draftPatch);
+  }
+
   await updatePostStatus(t, { status: "generating", compositeUrl: null });
   await recordVisitDb(t, "ramp_regenerate", {
     note,
     visualDirection: opts?.visualDirection || "",
     imageEdit: opts?.imageEdit || "",
+    backgroundPosterUrl: opts?.backgroundPosterUrl || "",
+    postType: opts?.postType || "",
+    mode: opts?.mode || "",
   });
 
   void runGenerationJob(req, t, rawMediaUrl, {
     visualDirection: opts?.visualDirection,
     imageEdit: opts?.imageEdit,
     extraNote: note || undefined,
+    backgroundPosterUrl: opts?.backgroundPosterUrl,
+    postStyle: opts?.postStyle,
+    postType: opts?.postType,
+    mode: opts?.mode,
+    selfieUrl: opts?.selfieUrl,
   });
 
   return { ok: true, token: t, status: "generating" };
@@ -961,6 +1220,7 @@ async function fireClientCareCardImpl(
       await recordVisitDb(token, "client_care_created", visitMeta);
     } catch {
       rampMemoryStore.createPost({
+        ...rampMemoryPostDefaults(),
         token,
         brandSlug,
         recipientPhone,
@@ -978,6 +1238,7 @@ async function fireClientCareCardImpl(
     }
   } else {
     rampMemoryStore.createPost({
+      ...rampMemoryPostDefaults(),
       token,
       brandSlug,
       recipientPhone,
@@ -1080,21 +1341,10 @@ export const rampService = {
     const t = String(token || "").trim();
     if (!t) return null;
 
-    const prisma = getPrisma();
-    if (prisma) {
-      const row = await prisma.rampDemoPost.findUnique({ where: { token: t } });
-      if (!row || !isRampPostReady(row.status) || !row.compositeUrl) return null;
-      await recordVisitDb(t, "post_it_view");
-      return dtoFromRow({
-        ...row,
-        landingUrl: rampLandingUrl(req, row.token),
-      });
-    }
-
-    const row = rampMemoryStore.getPost(t);
-    if (!row || !isRampPostReady(row.status) || !row.compositeUrl) return null;
-    rampMemoryStore.recordVisit(t, "post_it_view");
-    return dtoFromMemory(row);
+    const post = await getPostStatusImpl(req, t);
+    if (!post || !isRampPostReady(post.status) || !post.compositeUrl) return null;
+    await recordVisitDb(t, "post_it_view");
+    return post;
   },
 
   storeSharedSelfie: storeSharedSelfieImpl,
@@ -1163,6 +1413,14 @@ export const rampService = {
               row.stylistName ||
               "RAMP post",
             status: normalizeStatus(row.status),
+            postType: normalizePostTypeLabel(
+              (row as { postType?: string | null }).postType || "Curiosity",
+            ),
+            armed:
+              (row as { armed?: boolean | null }).armed != null
+                ? Boolean((row as { armed?: boolean | null }).armed)
+                : isArmedPostType((row as { postType?: string | null }).postType),
+            compositeUrl: row.compositeUrl,
             createdAt: row.createdAt.toISOString(),
           })),
         };
@@ -1183,10 +1441,21 @@ export const rampService = {
           row.stylistName ||
           "RAMP post",
         status: normalizeStatus(row.status),
+        postType: normalizePostTypeLabel(row.postType || "Curiosity"),
+        armed: row.armed != null ? Boolean(row.armed) : isArmedPostType(row.postType),
+        compositeUrl: row.compositeUrl,
         createdAt: row.createdAt,
       })),
     };
   },
+
+  patchDraft: patchDraftImpl,
+
+  composite: compositeImpl,
+
+  listBackgrounds: listBackgroundsImpl,
+
+  saveBackground: saveBackgroundImpl,
 
   /** Cloud library — built artifacts (ready/posted/sent), any device. */
   listLibrary: async (req: Request, limit = 40): Promise<RampLibraryResponse> => {

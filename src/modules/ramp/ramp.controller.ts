@@ -9,6 +9,8 @@ import type {
   InboundMmsRequest,
   ParkPickRequest,
   UpdateRampRecipientRequest,
+  PatchRampDraftRequest,
+  CompositeRampRequest,
 } from "./ramp.types.js";
 
 export const rampController = {
@@ -145,6 +147,11 @@ export const rampController = {
       note?: string;
       visualDirection?: string;
       imageEdit?: string;
+      postStyle?: string;
+      postType?: string;
+      backgroundPosterUrl?: string;
+      selfieUrl?: string;
+      mode?: "deterministic" | "ai";
     };
     try {
       res.json(
@@ -153,11 +160,74 @@ export const rampController = {
           visualDirection:
             typeof body.visualDirection === "string" ? body.visualDirection : undefined,
           imageEdit: typeof body.imageEdit === "string" ? body.imageEdit : undefined,
+          postStyle: typeof body.postStyle === "string" ? body.postStyle : undefined,
+          postType: typeof body.postType === "string" ? body.postType : undefined,
+          backgroundPosterUrl:
+            typeof body.backgroundPosterUrl === "string" ? body.backgroundPosterUrl : undefined,
+          selfieUrl: typeof body.selfieUrl === "string" ? body.selfieUrl : undefined,
+          mode: body.mode === "ai" || body.mode === "deterministic" ? body.mode : undefined,
         }),
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "regenerate failed";
       if (msg.includes("Unknown RAMP") || msg.includes("No source capture")) {
+        throw new HttpError(400, msg);
+      }
+      throw new HttpError(500, msg);
+    }
+  }),
+
+  patchDraft: asyncHandler(async (req: Request, res: Response) => {
+    const token = String(req.params.token || "").trim();
+    if (!token) throw new HttpError(400, "token required");
+    const body = req.body as PatchRampDraftRequest;
+    if (!body || typeof body !== "object") {
+      throw new HttpError(400, "Expected JSON object");
+    }
+    try {
+      res.json(await rampService.patchDraft(req, token, body));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "patch-draft failed";
+      if (msg.includes("Unknown RAMP") || msg.includes("No draft")) {
+        throw new HttpError(400, msg);
+      }
+      throw new HttpError(500, msg);
+    }
+  }),
+
+  composite: asyncHandler(async (req: Request, res: Response) => {
+    const token = String(req.params.token || "").trim();
+    if (!token) throw new HttpError(400, "token required");
+    const body = (req.body && typeof req.body === "object" ? req.body : {}) as CompositeRampRequest;
+    try {
+      res.json(await rampService.composite(req, token, body));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "composite failed";
+      if (msg.includes("Unknown RAMP") || msg.includes("No source") || msg.includes("No background")) {
+        throw new HttpError(400, msg);
+      }
+      throw new HttpError(500, msg);
+    }
+  }),
+
+  listBackgrounds: asyncHandler(async (req: Request, res: Response) => {
+    const brandSlug =
+      typeof req.query.brandSlug === "string" ? req.query.brandSlug : undefined;
+    res.json(await rampService.listBackgrounds(brandSlug));
+  }),
+
+  saveBackground: asyncHandler(async (req: Request, res: Response) => {
+    const body = (req.body && typeof req.body === "object" ? req.body : {}) as {
+      brandSlug?: string;
+      url?: string;
+      label?: string;
+      setAsDefault?: boolean;
+    };
+    try {
+      res.json(await rampService.saveBackground(req, body));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "save-background failed";
+      if (msg.includes("required")) {
         throw new HttpError(400, msg);
       }
       throw new HttpError(500, msg);
