@@ -457,7 +457,7 @@ async function startStylistPostImpl(
     recipientName,
     stylistName,
     products,
-    status: "processing" as const,
+    status: "landing" as const,
     sourceType,
     caption,
     aiCaptionDraft: caption,
@@ -483,7 +483,7 @@ async function startStylistPostImpl(
         data: postCreateData,
       });
       await recordVisitDb(token, "ramp_bolt_start", visitMeta);
-      return { ok: true, token, landingUrl, status: "processing" };
+      return { ok: true, token, landingUrl, status: "landing" };
     } catch {
       /* table missing — fall through to memory store */
     }
@@ -497,7 +497,7 @@ async function startStylistPostImpl(
   });
   rampMemoryStore.recordVisit(token, "ramp_bolt_start", visitMeta);
 
-  return { ok: true, token, landingUrl, status: "processing" };
+  return { ok: true, token, landingUrl, status: "landing" };
 }
 
 async function updatePostStatus(token: string, patch: Record<string, unknown>) {
@@ -1399,7 +1399,13 @@ export const rampService = {
     if (prisma) {
       try {
         const rows = await prisma.rampDemoPost.findMany({
-          where: { status: { in: queueStatuses } },
+          where: {
+            status: { in: queueStatuses },
+            OR: [
+              { careCardUrl: { not: null } },
+              { status: { in: ["pending", "pending_pick"] } },
+            ],
+          },
           orderBy: { updatedAt: "desc" },
           take: cap,
         });
@@ -1430,7 +1436,13 @@ export const rampService = {
     }
     const rows = rampMemoryStore
       .listRecent(cap)
-      .filter((row) => isRampQueueItem(row.status));
+      .filter((row) => isRampQueueItem(row.status))
+      .filter(
+        (row) =>
+          Boolean(row.careCardUrl) ||
+          normalizeStatus(row.status) === "pending" ||
+          normalizeStatus(row.status) === "pending_pick",
+      );
     return {
       items: rows.map((row) => ({
         id: row.id,

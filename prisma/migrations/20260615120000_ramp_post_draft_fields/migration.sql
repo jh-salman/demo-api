@@ -1,0 +1,16 @@
+-- RAMP Build Station draft + composite fields on RampDemoPost
+
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "aiCaptionDraft" TEXT;
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "backgroundPosterUrl" TEXT;
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "stylistStyleReferenceUrl" TEXT;
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "clientStyleReferenceUrl" TEXT;
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "capturePath" TEXT NOT NULL DEFAULT 'stylist_path';
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "postStyle" TEXT NOT NULL DEFAULT 'curiosity';
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "postType" TEXT NOT NULL DEFAULT 'Curiosity';
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "tags" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "links" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "visualDirection" TEXT NOT NULL DEFAULT 'raw';
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "imageEdit" TEXT NOT NULL DEFAULT 'hair_color_pop';
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "brandLayer" TEXT NOT NULL DEFAULT 'active_brand';
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "compositeMode" TEXT NOT NULL DEFAULT 'deterministic';
+ALTER TABLE "RampDemoPost" ADD COLUMN IF NOT EXISTS "armed" BOOLEAN NOT NULL DEFAULT false;

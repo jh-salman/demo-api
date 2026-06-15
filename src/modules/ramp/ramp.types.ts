@@ -148,7 +148,7 @@ export type StartStylistPostResponse = {
   ok: true;
   token: string;
   landingUrl: string;
-  status: "processing";
+  status: "landing" | "processing";
 };
 
 export type SubmitRampCaptureResponse = {
