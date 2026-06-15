@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   buildRampAiPrompt,
   buildRampBackgroundPassPrompt,
+  buildRampHybridPosterPrompt,
   buildRampSelfieCompositePrompt,
   normalizeRampBrandLayer,
   normalizeRampCapturePath,
@@ -12,6 +13,11 @@ import {
   normalizeRampVisualDirection,
   type RampPromptConfig,
 } from "./ramp-ai-prompts.js";
+import {
+  cloudinaryCutout,
+  cloudinaryFaceRepaste,
+  isCloudinaryConfigured,
+} from "./ramp-cloudinary.js";
 
 export function isOpenAiMockMode(): boolean {
   const raw = process.env.OPENAI_API_KEY?.trim();
@@ -37,6 +43,11 @@ export type RampGenerationInput = {
   clientStyleReferenceUrl?: string;
   /** @deprecated */
   referencePosterUrl?: string;
+  /** Brand-supplied poster copy for the hybrid pipeline. */
+  posterHeadline?: string;
+  posterTags?: string[];
+  posterLink?: string;
+  posterAttribution?: string;
 };
 
 function toPromptConfig(input: RampGenerationInput): RampPromptConfig {
@@ -329,6 +340,110 @@ export async function generateBrandedRampImage(
   } catch (e) {
     const message = e instanceof Error ? e.message : "OpenAI unavailable";
     console.warn("[ramp:openai] fail-safe — using source photo", message);
+    return { imageUrl: input.sourceImageUrl, mock: true, usedFallback: true };
+  }
+}
+
+/**
+ * HYBRID FACE-LOCK pipeline:
+ *   1. Cutout the subject (Cloudinary background removal) — face/body preserved.
+ *   2. OpenAI composes one professional poster from [cutout, background],
+ *      adjusting the BODY/pose and rendering all brand text/tags/overlay.
+ *   3. Re-paste the subject's REAL face over the AI poster (face gravity +
+ *      feather) so the final face is 100% the real person.
+ *
+ * Each stage degrades gracefully:
+ *   • cutout fails        → feed the raw photo to OpenAI instead
+ *   • OpenAI fails        → caller's fail-safe (raw photo) via thrown error
+ *   • face re-paste fails → return the AI poster without re-paste
+ */
+async function generateHybridWithOpenAi(
+  input: RampGenerationInput,
+): Promise<{ imageUrl: string; mock: boolean }> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) return { imageUrl: input.sourceImageUrl, mock: true };
+
+  const model = process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1";
+  const capturePath = normalizeRampCapturePath(input.capturePath, input.captureType);
+  const backgroundUrl = String(input.backgroundPosterUrl || "").trim();
+
+  // Original capture — kept as the real-face source for the re-paste step.
+  const sourceBuffer = await fetchImageBuffer(input.sourceImageUrl);
+
+  // ── Stage 1: subject cutout (background removed) ──────────────────────────
+  let subjectBuffer = sourceBuffer;
+  let cutoutOk = false;
+  if (isCloudinaryConfigured()) {
+    try {
+      subjectBuffer = await cloudinaryCutout(sourceBuffer);
+      cutoutOk = true;
+    } catch (e) {
+      console.warn(
+        "[ramp:hybrid] cutout failed — feeding raw photo to OpenAI:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+  const subjectPart = imagePartFromBuffer(subjectBuffer);
+
+  // ── Stage 2: AI poster (body adjusted + brand text), background optional ──
+  const hybridPrompt = buildRampHybridPosterPrompt({
+    recipientName: input.recipientName,
+    stylistName: input.stylistName,
+    brandSlug: input.brandSlug,
+    capturePath,
+    headline: input.posterHeadline,
+    tags: input.posterTags,
+    link: input.posterLink,
+    attribution: input.posterAttribution,
+    extraNote: input.extraNote,
+  });
+
+  const images: ImagePart[] = [subjectPart];
+  if (backgroundUrl) {
+    try {
+      const bgBuffer = await fetchImageBuffer(backgroundUrl);
+      images.push(imagePartFromBuffer(bgBuffer));
+    } catch (e) {
+      console.warn("[ramp:hybrid] background fetch failed — single-image edit", e);
+    }
+  }
+
+  const aiPoster = await runOpenAiImageEdit({ apiKey, model, prompt: hybridPrompt, images });
+
+  // ── Stage 3: re-paste the REAL face over the AI poster (face-lock) ────────
+  if (isCloudinaryConfigured()) {
+    try {
+      const locked = await cloudinaryFaceRepaste({
+        posterBuffer: aiPoster,
+        faceBuffer: sourceBuffer,
+      });
+      const hosted = await uploadGeneratedBuffer(locked, input.reqOrigin);
+      return { imageUrl: hosted, mock: false };
+    } catch (e) {
+      console.warn(
+        "[ramp:hybrid] face re-paste failed — returning AI poster as-is:",
+        e instanceof Error ? e.message : e,
+        cutoutOk ? "(cutout ok)" : "(no cutout)",
+      );
+    }
+  }
+
+  const hosted = await uploadGeneratedBuffer(aiPoster, input.reqOrigin);
+  return { imageUrl: hosted, mock: false };
+}
+
+export async function generateHybridRampImage(
+  input: RampGenerationInput,
+): Promise<{ imageUrl: string; mock: boolean; usedFallback?: boolean }> {
+  if (isOpenAiMockMode()) {
+    return { imageUrl: input.sourceImageUrl, mock: true };
+  }
+  try {
+    return await generateHybridWithOpenAi(input);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "OpenAI unavailable";
+    console.warn("[ramp:hybrid] fail-safe — using source photo", message);
     return { imageUrl: input.sourceImageUrl, mock: true, usedFallback: true };
   }
 }

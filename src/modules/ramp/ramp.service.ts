@@ -16,10 +16,14 @@ import {
   rampPublicBaseUrl,
   sendRampSms,
 } from "./ramp-sms.js";
-import { generateBrandedRampImage, isOpenAiMockMode, uploadGeneratedBuffer } from "./ramp-openai.js";
+import {
+  generateHybridRampImage,
+  isOpenAiMockMode,
+  uploadGeneratedBuffer,
+} from "./ramp-openai.js";
 import { normalizeRampPostStylePreset } from "./ramp-ai-prompts.js";
 import { normalizePhone, phonesMatch } from "./ramp-phone.js";
-import { compositeRampPoster } from "./ramp-composite.js";
+import { compositeRampPoster, type RampPosterText } from "./ramp-composite.js";
 import {
   resolveRampBrandDefaults,
   saveRampBackgroundToBrand,
@@ -164,15 +168,31 @@ type RampGenerationOverrides = {
   selfieUrl?: string;
 };
 
+/** Reduce a full caption down to a punchy poster headline (the hook). */
+function derivePosterHeadline(caption: string): string {
+  const firstLine =
+    String(caption || "")
+      .split(/\n+/)
+      .map((s) => s.trim())
+      .find((s) => s && !s.startsWith("#")) || "";
+  return firstLine
+    .replace(/#[\p{L}0-9_]+/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
 async function runDeterministicComposite(
   req: Request,
   _token: string,
   selfieUrl: string,
   backgroundUrl: string,
+  text?: RampPosterText,
 ): Promise<string> {
   const buffer = await compositeRampPoster({
     backgroundUrl,
     selfieUrl,
+    text,
   });
   return uploadGeneratedBuffer(buffer, requestOrigin(req));
 }
@@ -202,7 +222,25 @@ async function generateRampArtifact(
 
   if (mode !== "ai" && backgroundUrl) {
     try {
-      const imageUrl = await runDeterministicComposite(req, token, rawMediaUrl, backgroundUrl);
+      // Pull every editable layer into the composite: caption (headline hook),
+      // tags & attribution, and the referral link — so editing any of them in
+      // the Build Station and regenerating updates the poster.
+      const caption =
+        (postRow ? buildCaptionForPost(postRow) : "") ||
+        String(overrides?.extraNote || "").trim();
+      const posterText: RampPosterText = {
+        headline: derivePosterHeadline(caption),
+        attribution: String(postRow?.stylistName || RAMP_DEMO_PROFILE.stylistName || "").trim(),
+        tags: postRow ? captionTagsForBuild(tagsFromStored(postRow.tags)) : [],
+        link: postRow ? normalizeLinksInput(postRow.links)[0] : undefined,
+      };
+      const imageUrl = await runDeterministicComposite(
+        req,
+        token,
+        rawMediaUrl,
+        backgroundUrl,
+        posterText,
+      );
       return { imageUrl, mock: false, mode: "deterministic" };
     } catch (e) {
       console.warn("[ramp:composite] deterministic failed — trying AI fallback", e);
@@ -224,13 +262,27 @@ async function generateRampArtifact(
       "curiosity",
   );
 
-  const { imageUrl, mock, usedFallback } = await generateBrandedRampImage({
+  // Brand-supplied poster copy (caption hook, attribution, tags, referral link)
+  // so the hybrid AI poster renders the same editable layers as deterministic.
+  const aiCaption =
+    (postRow ? buildCaptionForPost(postRow) : "") || String(overrides?.extraNote || "").trim();
+  const posterHeadline = derivePosterHeadline(aiCaption);
+  const posterTags = postRow ? captionTagsForBuild(tagsFromStored(postRow.tags)) : [];
+  const posterLink = postRow ? normalizeLinksInput(postRow.links)[0] : undefined;
+  const posterAttribution =
+    String(postRow?.stylistName || RAMP_DEMO_PROFILE.stylistName || "").trim();
+
+  const { imageUrl, mock, usedFallback } = await generateHybridRampImage({
     sourceImageUrl: rawMediaUrl,
     postStyle,
     recipientName: postRow?.recipientName || "",
     stylistName: postRow?.stylistName || RAMP_DEMO_PROFILE.stylistName,
     brandSlug: postRow?.brandSlug || RAMP_DEMO_PROFILE.brandSlug,
     reqOrigin: requestOrigin(req),
+    posterHeadline,
+    posterTags,
+    posterLink,
+    posterAttribution,
     capturePath: typeof promptMeta.capturePath === "string" ? promptMeta.capturePath : undefined,
     visualDirection:
       overrides?.visualDirection ||

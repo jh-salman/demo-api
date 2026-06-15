@@ -345,6 +345,69 @@ export function buildRampSelfieCompositePrompt(input: {
   ].join("\n\n");
 }
 
+/**
+ * HYBRID pipeline prompt — the subject CUTOUT (background already removed) plus
+ * the poster BACKGROUND are sent together. The AI builds one professional poster:
+ * it MAY restyle/adjust the BODY, pose, clothing, scale, and lighting so the
+ * subject sits naturally in the layout, and renders all brand text / tags /
+ * overlay / headline. The face does NOT need to be perfect here — the caller
+ * re-pastes the subject's REAL face on top afterwards (face-lock), so the AI is
+ * told to keep the head in a clean, front-facing, unobstructed position.
+ */
+export function buildRampHybridPosterPrompt(input: {
+  recipientName: string;
+  stylistName: string;
+  brandSlug: string;
+  capturePath: RampCapturePath;
+  headline?: string;
+  tags?: string[];
+  link?: string;
+  attribution?: string;
+  extraNote?: string;
+}): string {
+  const brand = String(input.brandSlug || "salon").replace(/-/g, " ");
+  const brandWordmark = brand.toUpperCase();
+  const client = String(input.recipientName || "Guest").trim() || "Guest";
+  const stylist = String(input.stylistName || "Stylist").trim() || "Stylist";
+  const headline =
+    String(input.headline || "").trim() || `Did ${client} get his hair done by ${stylist}?`;
+  const attribution = String(input.attribution || stylist).trim();
+  const tags = (Array.isArray(input.tags) ? input.tags : [])
+    .map((t) => String(t || "").trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .map((t) => (t.startsWith("#") || t.startsWith("@") ? t : `#${t.replace(/^#+/, "")}`));
+  const link = String(input.link || "").trim();
+  const note = String(input.extraNote || "").trim();
+
+  const textToRender = [
+    "TEXT TO RENDER (spell exactly, bold and legible — this is brand-supplied copy):",
+    `• HEADLINE (grunge brush, white + neon accent): "${headline}"`,
+    `• ATTRIBUTION line: "${attribution}"`,
+    ...(tags.length ? [`• TAGS row: "${tags.join("  ")}"`] : []),
+    ...(link ? [`• REFERRAL LINK (small, footer): "${link}"`] : []),
+    `• VERTICAL BRAND WORDMARK down one edge: "${brandWordmark}"`,
+    `• CTA BANNER (neon, torn): "WHAT DO YOU THINK?  ⚡  COMMENT BELOW"`,
+  ].join("\n");
+
+  return [
+    "You receive TWO images:",
+    "• IMAGE 1 (first): SUBJECT CUTOUT — the real person(s) with the background already removed. This is the hero subject of the poster.",
+    "• IMAGE 2 (second): BACKGROUND POSTER — the base scene/canvas. Keep its scene, colors, and mood.",
+    "TASK: Build ONE finished, professional vertical 9:16 social poster. Place the IMAGE 1 subject into the IMAGE 2 scene as the hero.",
+    "BODY: You MAY adjust the subject's body, pose, framing, clothing drape, scale, shadow, and lighting so they sit naturally and look professionally art-directed inside the poster. Integrate them — do not leave a flat pasted cutout.",
+    "HEAD/FACE: Keep the head clearly visible, front-facing, well-lit, and UNOBSTRUCTED (no hands, hair, text, or graphics crossing the face). Do not add glasses/hats or change facial structure. Keep the face area clean — it will be finalized separately.",
+    RAMP_POSTER_SYSTEM,
+    CORE_VISUAL_DNA,
+    ...(note ? [`STYLIST NOTE (priority, keep all text legible): ${note}`] : []),
+    textToRender,
+    `Subject context: celebrate ${client}'s new look by ${stylist} for ${brand}.`,
+    "Vertical portrait poster, 1024x1536 (story 9:16).",
+    NEVER_GENERATE,
+    "Output a finished, post-ready RAMP poster with the subject professionally integrated and all brand text rendered.",
+  ].join("\n\n");
+}
+
 export function buildRampAiPrompt(input: RampPromptConfig): string {
   const brand = String(input.brandSlug || "salon").replace(/-/g, " ");
   const client = String(input.recipientName || "Guest").trim() || "Guest";

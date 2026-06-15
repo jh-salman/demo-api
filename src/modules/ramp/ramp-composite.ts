@@ -24,6 +24,141 @@ export type RampHeroFrame = {
   h: number;
 };
 
+/** Editable text layers rendered onto the deterministic poster. */
+export type RampPosterText = {
+  headline?: string;
+  attribution?: string;
+  tags?: string[];
+  link?: string;
+  accent?: string;
+};
+
+function escapeXml(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/** Greedy word-wrap by estimated glyph width (bold sans ≈ 0.56·fontSize). */
+function wrapText(text: string, fontSize: number, maxWidth: number, maxLines: number): string[] {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const maxChars = Math.max(6, Math.floor(maxWidth / (fontSize * 0.56)));
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+      if (lines.length >= maxLines) break;
+    }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  if (lines.length > maxLines) lines.length = maxLines;
+  // Ellipsis if the text overflowed the allotted lines.
+  const consumed = lines.join(" ").split(/\s+/).length;
+  if (consumed < words.length && lines.length) {
+    lines[lines.length - 1] = `${lines[lines.length - 1]}…`;
+  }
+  return lines;
+}
+
+function hasPosterText(text?: RampPosterText): boolean {
+  if (!text) return false;
+  return Boolean(
+    String(text.headline || "").trim() ||
+      String(text.attribution || "").trim() ||
+      String(text.link || "").trim() ||
+      (Array.isArray(text.tags) && text.tags.some((t) => String(t || "").trim())),
+  );
+}
+
+/**
+ * Build a full-canvas SVG that renders the editable text layers — headline hook
+ * at the top, attribution + tags + referral link at the bottom — over legibility
+ * scrims. Returns null when there is nothing to render.
+ */
+function buildTextOverlaySvg(text: RampPosterText): Buffer | null {
+  const accent = String(text.accent || "").trim() || "#E9C46A";
+  const sideMargin = 64;
+  const maxTextWidth = RAMP_POSTER_W - sideMargin * 2;
+
+  const headlineSize = 66;
+  const headlineLines = wrapText(text.headline || "", headlineSize, maxTextWidth, 3);
+
+  const attribution = String(text.attribution || "").trim();
+  const tags = (Array.isArray(text.tags) ? text.tags : [])
+    .map((t) => String(t || "").trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .map((t) => (t.startsWith("#") ? t : `#${t.replace(/^#+/, "")}`));
+  const link = String(text.link || "").trim();
+
+  const parts: string[] = [];
+
+  parts.push(`
+    <defs>
+      <linearGradient id="topScrim" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#000000" stop-opacity="0.62"/>
+        <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="bottomScrim" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+        <stop offset="1" stop-color="#000000" stop-opacity="0.78"/>
+      </linearGradient>
+    </defs>
+  `);
+
+  if (headlineLines.length) {
+    parts.push(
+      `<rect x="0" y="0" width="${RAMP_POSTER_W}" height="380" fill="url(#topScrim)"/>`,
+    );
+    const lineHeight = Math.round(headlineSize * 1.12);
+    const startY = 120;
+    headlineLines.forEach((line, i) => {
+      parts.push(
+        `<text x="${sideMargin}" y="${startY + i * lineHeight}" font-family="'Helvetica Neue',Arial,sans-serif" font-size="${headlineSize}" font-weight="800" letter-spacing="-1" fill="#FFFFFF">${escapeXml(line.toUpperCase())}</text>`,
+      );
+    });
+  }
+
+  const hasBottom = Boolean(attribution || tags.length || link);
+  if (hasBottom) {
+    parts.push(
+      `<rect x="0" y="${RAMP_POSTER_H - 400}" width="${RAMP_POSTER_W}" height="400" fill="url(#bottomScrim)"/>`,
+    );
+    let cursorY = RAMP_POSTER_H - 64;
+    if (link) {
+      parts.push(
+        `<text x="${sideMargin}" y="${cursorY}" font-family="'Helvetica Neue',Arial,sans-serif" font-size="30" font-weight="500" fill="#FFFFFF" fill-opacity="0.72">${escapeXml(link)}</text>`,
+      );
+      cursorY -= 46;
+    }
+    if (tags.length) {
+      const tagLine = wrapText(tags.join("  "), 30, maxTextWidth, 1)[0] || tags.join("  ");
+      parts.push(
+        `<text x="${sideMargin}" y="${cursorY}" font-family="'Helvetica Neue',Arial,sans-serif" font-size="30" font-weight="600" fill="#FFFFFF" fill-opacity="0.88">${escapeXml(tagLine)}</text>`,
+      );
+      cursorY -= 52;
+    }
+    if (attribution) {
+      const attrLine = wrapText(attribution, 42, maxTextWidth, 1)[0] || attribution;
+      parts.push(
+        `<text x="${sideMargin}" y="${cursorY}" font-family="'Helvetica Neue',Arial,sans-serif" font-size="42" font-weight="800" letter-spacing="-0.5" fill="${escapeXml(accent)}">${escapeXml(attrLine)}</text>`,
+      );
+    }
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${RAMP_POSTER_W}" height="${RAMP_POSTER_H}" viewBox="0 0 ${RAMP_POSTER_W} ${RAMP_POSTER_H}">${parts.join("")}</svg>`;
+  return Buffer.from(svg);
+}
+
 async function fetchImageBuffer(url: string): Promise<Buffer> {
   const trimmed = url.trim();
   const res = await fetch(trimmed);
@@ -118,8 +253,13 @@ async function buildSubjectLayer(
       left: subjLeft - SHADOW_PAD,
       top: subjTop - SHADOW_PAD,
     };
-  } catch {
+  } catch (e) {
     // Fallback — no cutout available: cover-fit the raw photo into the zone.
+    // Surface WHY the cutout failed so we don't silently degrade to the raw photo.
+    console.warn(
+      "[ramp:composite] subject cutout failed — using raw cover-fit fallback:",
+      e instanceof Error ? e.message : e,
+    );
     const cover = await sharp(selfieBuf)
       .resize(frame.w, frame.h, { fit: "cover", position: "attention" })
       .png()
@@ -166,6 +306,7 @@ export async function compositeRampPoster(input: {
   backgroundUrl: string;
   selfieUrl: string;
   frame?: RampHeroFrame;
+  text?: RampPosterText;
 }): Promise<Buffer> {
   const backgroundUrl = String(input.backgroundUrl || "").trim();
   const selfieUrl = String(input.selfieUrl || "").trim();
@@ -189,8 +330,19 @@ export async function compositeRampPoster(input: {
 
   const overlay = placed ?? { buffer: subject.buffer, left: frame.x, top: frame.y };
 
+  const layers: sharp.OverlayOptions[] = [
+    { input: overlay.buffer, left: overlay.left, top: overlay.top },
+  ];
+
+  // Editable text layers (caption hook, attribution, tags, referral link) are
+  // painted ON TOP of the subject so they stay legible over the poster.
+  if (hasPosterText(input.text)) {
+    const textSvg = buildTextOverlaySvg(input.text!);
+    if (textSvg) layers.push({ input: textSvg, left: 0, top: 0 });
+  }
+
   return sharp(background)
-    .composite([{ input: overlay.buffer, left: overlay.left, top: overlay.top }])
+    .composite(layers)
     .jpeg({ quality: 92, mozjpeg: true })
     .toBuffer();
 }
