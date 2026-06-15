@@ -22,6 +22,35 @@ export type RampBackgroundOption = {
   isDefault?: boolean;
 };
 
+/** Bundled sample poster (served from demo-api/public/ramp-assets). */
+export const BUILTIN_REFERENCE_BACKGROUND_PATH = "/ramp-assets/reference-default.png";
+
+export function builtinReferenceBackgroundUrl(origin: string): string {
+  return `${String(origin || "").replace(/\/$/, "")}${BUILTIN_REFERENCE_BACKGROUND_PATH}`;
+}
+
+/**
+ * Guarantee the bundled reference poster is always available + selectable, even
+ * before any brand background has been uploaded. Prepended as the default when
+ * the brand has no saved default of its own.
+ */
+export function withBuiltinReferenceBackground(
+  items: RampBackgroundOption[],
+  origin: string,
+): RampBackgroundOption[] {
+  const builtinUrl = builtinReferenceBackgroundUrl(origin);
+  const exists = items.some((b) => b.url === builtinUrl);
+  const hasDefault = items.some((b) => b.isDefault);
+  if (exists) return items;
+  const builtin: RampBackgroundOption = {
+    id: "builtin_reference",
+    label: "Salon X reference",
+    url: builtinUrl,
+    isDefault: !hasDefault,
+  };
+  return [builtin, ...items];
+}
+
 export type RampBrandDefaults = {
   defaultBackgroundPosterUrl: string;
   backgrounds: RampBackgroundOption[];

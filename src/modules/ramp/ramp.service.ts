@@ -23,6 +23,8 @@ import { compositeRampPoster } from "./ramp-composite.js";
 import {
   resolveRampBrandDefaults,
   saveRampBackgroundToBrand,
+  builtinReferenceBackgroundUrl,
+  withBuiltinReferenceBackground,
 } from "./ramp-brand-config.js";
 import {
   captionTagsForBuild,
@@ -183,7 +185,10 @@ async function generateRampArtifact(
   overrides?: RampGenerationOverrides,
 ): Promise<{ imageUrl: string; mock: boolean; usedFallback?: boolean; mode: string }> {
   const promptMeta = (await readBoltStartPromptMeta(token)) || {};
-  const backgroundUrl = await resolveBackgroundPosterUrl(token, postRow, overrides?.backgroundPosterUrl);
+  const resolvedBackground = await resolveBackgroundPosterUrl(token, postRow, overrides?.backgroundPosterUrl);
+  // Always have a background for deterministic compositing — fall back to the
+  // bundled reference poster so face-safe composite never silently degrades.
+  const backgroundUrl = resolvedBackground || builtinReferenceBackgroundUrl(requestOrigin(req));
   const brandDefaults = await resolveRampBrandDefaults(postRow?.brandSlug);
   const rowMode = String(postRow?.compositeMode || "").trim().toLowerCase();
   const envMode = brandDefaults.compositeMode;
@@ -1059,9 +1064,10 @@ async function compositeImpl(
   return { ok: true, token: t, status: "ready", compositeUrl: imageUrl, mode };
 }
 
-async function listBackgroundsImpl(brandSlug?: string) {
+async function listBackgroundsImpl(req: Request, brandSlug?: string) {
   const defaults = await resolveRampBrandDefaults(brandSlug);
-  return { ok: true as const, items: defaults.backgrounds };
+  const items = withBuiltinReferenceBackground(defaults.backgrounds, requestOrigin(req));
+  return { ok: true as const, items };
 }
 
 async function saveBackgroundImpl(

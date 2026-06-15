@@ -213,7 +213,7 @@ export const rampController = {
   listBackgrounds: asyncHandler(async (req: Request, res: Response) => {
     const brandSlug =
       typeof req.query.brandSlug === "string" ? req.query.brandSlug : undefined;
-    res.json(await rampService.listBackgrounds(brandSlug));
+    res.json(await rampService.listBackgrounds(req, brandSlug));
   }),
 
   saveBackground: asyncHandler(async (req: Request, res: Response) => {

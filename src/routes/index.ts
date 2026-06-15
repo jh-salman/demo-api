@@ -22,6 +22,10 @@ export function registerRoutes(app: Express) {
     "/uploads",
     express.static(path.join(process.cwd(), "public", "uploads"), { fallthrough: true }),
   );
+  app.use(
+    "/ramp-assets",
+    express.static(path.join(process.cwd(), "public", "ramp-assets"), { fallthrough: true }),
+  );
   app.use("/api/config", configRouter);
   app.use("/api/upload/sign", uploadSignRouter);
   app.use("/api/upload", uploadRouter);
