@@ -1,0 +1,78 @@
+{
+  "info": {
+    "_postman_id": "ramp-ai-salonx-demo-api",
+    "name": "RAMP AI — demo-api",
+    "description": "Only RAMP image generation endpoints.\n\n1. Start server: `cd demo-api && npm run dev`\n2. Set `OPENAI_API_KEY` in `demo-api/.env`\n3. Postman timeout: Settings → General → Request timeout → **0** or **300000** (generation takes 2–4 min)\n4. Success response = PNG binary → use **Send and Download** to save file",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000" },
+    { "key": "imageUrl", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "POST generate-image (text only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"prompt\": \"A modern salon interior with warm lighting, realistic style\",\n  \"size\": \"1024x1024\"\n}"
+        },
+        "url": "{{baseUrl}}/api/ramp/generate-image",
+        "description": "Prompt only → new image.\n\nOptional fields:\n- `model` (default: gpt-image-2)\n- `size`: 1024x1024 | 1024x1536 | 1536x1024"
+      },
+      "response": []
+    },
+    {
+      "name": "POST generate-image (your image upload)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "prompt",
+              "value": "Keep the subject but transform into a premium salon social media post with elegant branding",
+              "type": "text"
+            },
+            {
+              "key": "size",
+              "value": "1024x1024",
+              "type": "text",
+              "description": "Optional"
+            },
+            {
+              "key": "image",
+              "type": "file",
+              "src": "",
+              "description": "Your photo — PNG/JPEG/WebP, max 20MB. Field name must be `image`."
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/api/ramp/generate-image",
+        "description": "Your image + prompt → AI generates new image using yours as reference.\n\nDo NOT set Content-Type header manually."
+      },
+      "response": []
+    },
+    {
+      "name": "POST generate-image (image URL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"prompt\": \"Transform into a premium salon social post with soft lighting\",\n  \"imageUrl\": \"{{imageUrl}}\",\n  \"size\": \"1024x1024\"\n}"
+        },
+        "url": "{{baseUrl}}/api/ramp/generate-image",
+        "description": "Public image URL as reference.\n\nSet collection variable `imageUrl` to a direct image link (e.g. Cloudinary URL).\nAlso accepts `url` instead of `imageUrl`."
+      },
+      "response": []
+    }
+  ]
+}

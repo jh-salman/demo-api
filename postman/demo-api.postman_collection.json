@@ -7,7 +7,8 @@
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:4000" },
-    { "key": "appointmentId", "value": "" }
+    { "key": "appointmentId", "value": "" },
+    { "key": "imageUrl", "value": "https://res.cloudinary.com/your-cloud/image/upload/sample.png" }
   ],
   "item": [
     {
@@ -172,6 +173,69 @@
             "method": "DELETE",
             "header": [],
             "url": "{{baseUrl}}/api/appointments/{{appointmentId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "RAMP — Image generation",
+      "description": "OpenAI `gpt-image-2`. Success = binary PNG (`image/png`). Generation can take 2–4 minutes — increase Postman request timeout (Settings → General → Request timeout).\n\nRequires `OPENAI_API_KEY` in demo-api `.env`.",
+      "item": [
+        {
+          "name": "POST generate-image (text only)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"A modern salon interior with warm lighting, realistic style\",\n  \"size\": \"1024x1024\"\n}"
+            },
+            "url": "{{baseUrl}}/api/ramp/generate-image",
+            "description": "Text-only → new image. Optional: `model`, `size` (`1024x1024` | `1024x1536` | `1536x1024`).\n\n**Postman tip:** Use **Send and Download** (dropdown next to Send) to save the PNG response."
+          }
+        },
+        {
+          "name": "POST generate-image (your image upload)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "prompt",
+                  "value": "Keep the subject but transform into a premium salon social media post with elegant branding",
+                  "type": "text"
+                },
+                {
+                  "key": "size",
+                  "value": "1024x1024",
+                  "type": "text",
+                  "description": "Optional"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": "",
+                  "description": "Your photo (PNG/JPEG/WebP, max 20MB). Field name must be `image`."
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/ramp/generate-image",
+            "description": "Upload your image + prompt → AI generates a new image using yours as reference (`images.edit`).\n\nDo **not** set `Content-Type` manually — Postman sets `multipart/form-data` with boundary.\n\nUse **Send and Download** to save PNG."
+          }
+        },
+        {
+          "name": "POST generate-image (image URL)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Transform into a premium salon social post with soft lighting\",\n  \"imageUrl\": \"{{imageUrl}}\",\n  \"size\": \"1024x1024\"\n}"
+            },
+            "url": "{{baseUrl}}/api/ramp/generate-image",
+            "description": "Remote image URL as reference. Upload first via **POST upload** and paste returned `url` into collection variable `imageUrl`.\n\nAlso accepts `url` instead of `imageUrl`."
           }
         }
       ]

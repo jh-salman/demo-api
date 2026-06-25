@@ -1,22 +1,30 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
+import multer from "multer";
+import os from "node:os";
+import path from "node:path";
 import { rampController } from "./ramp.controller.js";
 
-/** Grouped RAMP read routes (`GET /api/ramp/post/:token`). */
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, os.tmpdir());
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || "") || ".png";
+    cb(null, `${randomUUID()}${ext}`);
+  },
+});
+
+const uploadMw = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
 export const rampRouter = Router();
 
-rampRouter.get("/recent", rampController.listRecent);
-rampRouter.get("/library", rampController.listLibrary);
-rampRouter.get("/backgrounds", rampController.listBackgrounds);
-rampRouter.post("/backgrounds", rampController.saveBackground);
-rampRouter.post("/submit-capture", rampController.submitRampCapture);
-rampRouter.post("/:token/park-pick", rampController.parkPick);
-rampRouter.get("/:token/candidates", rampController.listCandidates);
-rampRouter.get("/status/:token", rampController.getStatus);
-rampRouter.patch("/:token/draft", rampController.patchDraft);
-rampRouter.post("/:token/composite", rampController.composite);
-rampRouter.post("/:token/dismiss-queue", rampController.dismissFromQueue);
-rampRouter.post("/:token/regenerate", rampController.regenerate);
-rampRouter.post("/:token/recipient", rampController.updateRecipient);
-rampRouter.post("/:token/send-sms", rampController.sendSms);
-rampRouter.get("/post/:token", rampController.getPost);
-rampRouter.post("/start-post", rampController.startStylistPost);
+/** Text-only, `imageUrl`, or multipart `image` + `prompt`. Returns PNG bytes. */
+rampRouter.post(
+  "/generate-image",
+  uploadMw.single("image"),
+  rampController.generateImage,
+);

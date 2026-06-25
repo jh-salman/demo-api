@@ -2,12 +2,14 @@ import type { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
 import { JsonRowConflictError } from "../../lib/json-row-store.js";
+import { cachedClientsGet, invalidateClientsCache } from "./clients.cache.js";
 import { clientsService } from "./clients.service.js";
 import { emitClientsCatalogUpdated } from "../../realtime/io.js";
 
 export const clientsController = {
   get: asyncHandler(async (_req: Request, res: Response) => {
-    res.json(await clientsService.get());
+    const payload = await cachedClientsGet(() => clientsService.get());
+    res.json(payload);
   }),
 
   put: asyncHandler(async (req: Request, res: Response) => {
@@ -21,6 +23,7 @@ export const clientsController = {
         b.clients,
         typeof b.expectedUpdatedAt === "string" ? b.expectedUpdatedAt : null,
       );
+      await invalidateClientsCache();
       emitClientsCatalogUpdated(next);
       res.json(next);
     } catch (e) {

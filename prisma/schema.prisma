@@ -88,67 +88,78 @@ model SalonxProductCatalog {
   updatedAt DateTime @updatedAt
 }
 
-/// RAMP demo posts — Client Care Card + public `/p/:token` flow.
-model RampDemoPost {
+// ── RAMP V3 runtime (salonx-web-v2 Build → Ship) ─────────────────────────────
+
+/// Capture → S1 queue (`GET/POST /api/ramp/visits`).
+model RampVisit {
   id             String   @id @default(cuid())
-  token          String   @unique
-  brandSlug      String
-  recipientPhone String
-  recipientName  String   @default("")
-  stylistName    String   @default("")
-  products       Json     @default("[]")
-  status         String   @default("care_sent")
-  sourceType     String   @default("client_care")
-  careCardUrl    String?
-  compositeUrl   String?
-  caption        String?
-  aiCaptionDraft String?
-  backgroundPosterUrl String?
-  stylistStyleReferenceUrl String?
-  clientStyleReferenceUrl String?
-  capturePath    String   @default("stylist_path")
-  postStyle      String   @default("curiosity")
-  postType       String   @default("Curiosity")
-  tags           Json     @default("[]")
-  links          Json     @default("[]")
-  visualDirection String  @default("raw")
-  imageEdit      String   @default("hair_color_pop")
-  brandLayer     String   @default("active_brand")
-  compositeMode  String   @default("deterministic")
-  armed          Boolean  @default(false)
+  salonId        String   @default("default")
+  stylistId      String?
+  clientId       String?
+  clientName     String
+  clientSub      String?
+  clientEmoji    String?
+  status         String   @default("queued")
+  captureAssetId String?
+  postId         String?  @unique
+  queuedAt       DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  visits RampVisit[]
-  assets RampSharedAsset[]
+  post RampDemoPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
 
-  @@index([recipientPhone])
-  @@index([brandSlug])
+  @@index([salonId, status, queuedAt])
+  @@map("RampVisit")
 }
 
-/// RAMP visit / funnel events (landing, copy, share).
-model RampVisit {
-  id           String   @id @default(cuid())
-  token        String
-  eventType    String
-  metadataJson Json?
-  createdAt    DateTime @default(now())
-  post         RampDemoPost @relation(fields: [token], references: [token], onDelete: Cascade)
+/// Full post document (`GET/PATCH /api/ramp/posts/:id`).
+model RampDemoPost {
+  id               String    @id @default(cuid())
+  salonId          String    @default("default")
+  stylistId        String?
+  target           Json      @default("{}")
+  caption          String    @default("")
+  type             String    @default("Curiosity")
+  tags             Json      @default("[]")
+  links            Json      @default("[]")
+  heroId           String    @default("s0")
+  heroTab          String    @default("ramp")
+  captureAssetId   String?
+  capturePlacement Json?
+  backgrounds      Json      @default("[]")
+  backgroundIndex  Int       @default(0)
+  templateId       String    @default("tem1")
+  posterByTemplate Json      @default("{}")
+  dirty            Json      @default("{}")
+  genState         String    @default("idle")
+  composedAssetId  String?
+  shipMode         String?
+  shippedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  @@index([token])
+  visit RampVisit?
+
+  @@index([salonId, genState])
+  @@map("RampDemoPost")
 }
 
-/// Client selfie / shared media for RAMP artifact.
+/// Media library (`GET/POST /api/ramp/assets`).
 model RampSharedAsset {
-  id            String   @id @default(cuid())
-  token         String
-  brandSlug     String   @default("")
-  source        String   @default("web_upload")
-  phone         String?
-  mediaUrl      String?
-  cloudinaryUrl String?
-  createdAt     DateTime @default(now())
-  post          RampDemoPost @relation(fields: [token], references: [token], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  salonId   String   @default("default")
+  clientId  String?
+  postId    String?
+  visitId   String?
+  kind      String
+  source    String   @default("upload")
+  url       String
+  thumbUrl  String?
+  meta      Json?
+  createdAt DateTime @default(now())
 
-  @@index([token])
+  @@index([salonId, clientId, kind])
+  @@index([postId])
+  @@index([visitId])
+  @@map("RampSharedAsset")
 }

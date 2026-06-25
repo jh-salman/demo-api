@@ -109,14 +109,6 @@ export type BrandProfile = {
   s5: SimpleScreenConfig;
   /** When true, that screen’s assets/theme slice should not be editable in Build Station. */
   screenLocks: Record<BuildScreenId, boolean>;
-  /** RAMP poster defaults — backgrounds, style refs, frame preset. */
-  ramp?: {
-    defaultBackgroundPosterUrl?: string;
-    backgrounds?: Array<{ id?: string; label?: string; url: string }>;
-    stylistStyleReferenceUrl?: string;
-    clientStyleReferenceUrl?: string;
-    compositeMode?: "deterministic" | "ai" | "auto";
-  };
 };
 
 export type SalonxV2AdminConfig = {
@@ -299,42 +291,6 @@ export function normalizeBrand(b: unknown, fallbackId: string, fallbackName: str
       const v = (locks as Record<string, unknown>)[k];
       if (typeof v === "boolean") base.screenLocks[k] = v;
     }
-  }
-
-  const ramp = o.ramp;
-  if (ramp && typeof ramp === "object") {
-    const r = ramp as Record<string, unknown>;
-    base.ramp = {
-      defaultBackgroundPosterUrl:
-        typeof r.defaultBackgroundPosterUrl === "string"
-          ? r.defaultBackgroundPosterUrl.trim()
-          : undefined,
-      stylistStyleReferenceUrl:
-        typeof r.stylistStyleReferenceUrl === "string"
-          ? r.stylistStyleReferenceUrl.trim()
-          : undefined,
-      clientStyleReferenceUrl:
-        typeof r.clientStyleReferenceUrl === "string"
-          ? r.clientStyleReferenceUrl.trim()
-          : undefined,
-      backgrounds: Array.isArray(r.backgrounds)
-        ? r.backgrounds
-            .filter((b) => b && typeof b === "object")
-            .map((b) => {
-              const row = b as { id?: string; label?: string; url?: string };
-              return {
-                id: typeof row.id === "string" ? row.id.trim() : undefined,
-                label: typeof row.label === "string" ? row.label.trim() : undefined,
-                url: String(row.url || "").trim(),
-              };
-            })
-            .filter((b) => b.url)
-        : undefined,
-      compositeMode:
-        r.compositeMode === "ai" || r.compositeMode === "auto" || r.compositeMode === "deterministic"
-          ? r.compositeMode
-          : undefined,
-    };
   }
 
   return base;

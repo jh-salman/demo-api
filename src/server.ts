@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { env } from "./config/env.js";
 import { createApp } from "./app.js";
+import { isRedisEnabled } from "./lib/redis.js";
 import { setIo } from "./realtime/io.js";
 
 const app = createApp();
@@ -25,4 +26,11 @@ io.on("connection", (socket) => {
 httpServer.listen(env.PORT, () => {
   console.log(`demo-api (Express + Prisma + Socket.IO) http://localhost:${env.PORT}`);
   console.log("[demo-api] Config schema: s4.headerLogo + headerLogoAdjust enabled");
+  if (isRedisEnabled()) {
+    console.log(
+      `[demo-api] Clients cache: Upstash Redis ON (TTL ${env.CLIENTS_CACHE_TTL_SECONDS}s)`,
+    );
+  } else {
+    console.log("[demo-api] Redis cache: OFF (set UPSTASH_REDIS_REST_URL + TOKEN)");
+  }
 });

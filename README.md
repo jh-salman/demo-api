@@ -29,6 +29,8 @@ npx prisma migrate deploy
 | `/api/clients` | GET, PUT | `{ clients, expectedUpdatedAt? }` |
 | `/api/service-catalog` | GET, PUT | `{ serviceCatalog, expectedUpdatedAt? }` |
 
+**DB migration (safe — no reset):** `npx prisma migrate deploy` applies only pending migrations; existing `Salonx*` rows are untouched.
+
 `expectedUpdatedAt` on PUT returns **409** with current server row when another tab/device saved first.
 
 ## Render — monorepo (`Salon-x` with `salonx/demo-api`)

@@ -13,7 +13,6 @@ import { serviceCatalogRouter } from "../modules/service-catalog/service-catalog
 import { clientConsultationRouter } from "../modules/client-consultation/client-consultation.routes.js";
 import { appointmentVisitRouter } from "../modules/appointment-visit/appointment-visit.routes.js";
 import { productCatalogRouter } from "../modules/product-catalog/product-catalog.routes.js";
-import { rampController } from "../modules/ramp/ramp.controller.js";
 import { rampRouter } from "../modules/ramp/ramp.routes.js";
 
 export function registerRoutes(app: Express) {
@@ -21,10 +20,6 @@ export function registerRoutes(app: Express) {
   app.use(
     "/uploads",
     express.static(path.join(process.cwd(), "public", "uploads"), { fallthrough: true }),
-  );
-  app.use(
-    "/ramp-assets",
-    express.static(path.join(process.cwd(), "public", "ramp-assets"), { fallthrough: true }),
   );
   app.use("/api/config", configRouter);
   app.use("/api/upload/sign", uploadSignRouter);
@@ -37,10 +32,5 @@ export function registerRoutes(app: Express) {
   app.use("/api/client-consultation", clientConsultationRouter);
   app.use("/api/appointment-visit", appointmentVisitRouter);
   app.use("/api/appointments", appointmentsRouter);
-  // SUPER RAMP 2 — POST IT runtime (NUCLEAR 7 contract paths)
-  app.post("/api/fire-care-card", rampController.fireCareCard);
-  app.post("/api/store-shared-selfie", rampController.storeSharedSelfie);
-  app.post("/api/mms-in", rampController.mmsIn);
-  app.post("/api/track-copy", rampController.trackCopy);
   app.use("/api/ramp", rampRouter);
 }
