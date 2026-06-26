@@ -15,6 +15,7 @@ export const RealtimeEvents = {
   CONSULTATION_UPDATED: "consultation:updated",
   APPOINTMENT_VISIT_UPDATED: "appointment-visit:updated",
   PRODUCT_CATALOG_UPDATED: "product-catalog:updated",
+  RAMP_POST_UPDATED: "ramp:post:updated",
 } as const;
 
 export function setIo(server: Server) {
@@ -95,4 +96,8 @@ export function emitProductCatalogUpdated(payload: {
   updatedAt?: string;
 }) {
   io?.emit(RealtimeEvents.PRODUCT_CATALOG_UPDATED, payload);
+}
+
+export function emitRampPostUpdated(payload: { post: unknown }) {
+  io?.emit(RealtimeEvents.RAMP_POST_UPDATED, payload);
 }

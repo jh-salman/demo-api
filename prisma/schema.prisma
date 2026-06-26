@@ -88,78 +88,45 @@ model SalonxProductCatalog {
   updatedAt DateTime @updatedAt
 }
 
-// ── RAMP V3 runtime (salonx-web-v2 Build → Ship) ─────────────────────────────
+// ── RAMP runtime (salonx-web-v2 capture → build → ship) ──────────────────────
 
-/// Capture → S1 queue (`GET/POST /api/ramp/visits`).
-model RampVisit {
-  id             String   @id @default(cuid())
-  salonId        String   @default("default")
-  stylistId      String?
-  clientId       String?
-  clientName     String
-  clientSub      String?
-  clientEmoji    String?
-  status         String   @default("queued")
-  captureAssetId String?
-  postId         String?  @unique
-  queuedAt       DateTime @default(now())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+/// One RAMP item = queue row + build doc in a single record (`/api/ramp/posts`).
+/// status: queued | building | generated | shipped | dismissed
+/// source: capture | station | s5
+model RampPost {
+  id              String    @id @default(cuid())
+  salonId         String    @default("default")
 
-  post RampDemoPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
+  clientId        String?
+  clientName      String
+  clientSub       String?
+  clientEmoji     String?   @default("🧑")
+  stylistId       String?
 
-  @@index([salonId, status, queuedAt])
-  @@map("RampVisit")
-}
+  source          String    @default("capture")
+  status          String    @default("queued")
 
-/// Full post document (`GET/PATCH /api/ramp/posts/:id`).
-model RampDemoPost {
-  id               String    @id @default(cuid())
-  salonId          String    @default("default")
-  stylistId        String?
-  target           Json      @default("{}")
-  caption          String    @default("")
-  type             String    @default("Curiosity")
-  tags             Json      @default("[]")
-  links            Json      @default("[]")
-  heroId           String    @default("s0")
-  heroTab          String    @default("ramp")
-  captureAssetId   String?
-  capturePlacement Json?
-  backgrounds      Json      @default("[]")
-  backgroundIndex  Int       @default(0)
-  templateId       String    @default("tem1")
-  posterByTemplate Json      @default("{}")
-  dirty            Json      @default("{}")
-  genState         String    @default("idle")
-  composedAssetId  String?
-  shipMode         String?
-  shippedAt        DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  /// string[] of uploaded capture URLs.
+  capturedImages  Json      @default("[]")
+  /// string[] of generated/composed image URLs (latest last).
+  generatedImages Json      @default("[]")
+  /// Selected hero image URL (usually one of capturedImages).
+  heroImage       String?
 
-  visit RampVisit?
+  caption         String    @default("")
+  type            String    @default("Curiosity")
+  tags            Json      @default("[]")
+  links           Json      @default("[]")
+  backgroundId    String    @default("bg1")
 
-  @@index([salonId, genState])
-  @@map("RampDemoPost")
-}
+  genState        String    @default("idle")
+  shipMode        String?
+  shippedAt       DateTime?
 
-/// Media library (`GET/POST /api/ramp/assets`).
-model RampSharedAsset {
-  id        String   @id @default(cuid())
-  salonId   String   @default("default")
-  clientId  String?
-  postId    String?
-  visitId   String?
-  kind      String
-  source    String   @default("upload")
-  url       String
-  thumbUrl  String?
-  meta      Json?
-  createdAt DateTime @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  @@index([salonId, clientId, kind])
-  @@index([postId])
-  @@index([visitId])
-  @@map("RampSharedAsset")
+  @@index([salonId, status, createdAt])
+  @@index([clientId])
+  @@map("RampPost")
 }

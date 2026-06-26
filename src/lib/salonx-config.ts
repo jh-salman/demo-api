@@ -82,6 +82,16 @@ export type SimpleScreenConfig = {
   headerLogoAdjust?: S1DemoSlotAdjust;
 };
 
+/** RAMP Build Station presets (caption, tags, backgrounds). */
+export type RampConfig = {
+  defaultCaption?: string;
+  postTypes?: string[];
+  defaultTags?: unknown[];
+  defaultChips?: unknown[];
+  backgrounds?: unknown[];
+  defaultLinks?: unknown[];
+};
+
 export type BrandProfile = {
   id: string;
   name: string;
@@ -109,6 +119,8 @@ export type BrandProfile = {
   s5: SimpleScreenConfig;
   /** When true, that screen’s assets/theme slice should not be editable in Build Station. */
   screenLocks: Record<BuildScreenId, boolean>;
+  /** RAMP presets for salonx-web-v2 Build → Ship. */
+  ramp?: RampConfig;
 };
 
 export type SalonxV2AdminConfig = {
@@ -291,6 +303,21 @@ export function normalizeBrand(b: unknown, fallbackId: string, fallbackName: str
       const v = (locks as Record<string, unknown>)[k];
       if (typeof v === "boolean") base.screenLocks[k] = v;
     }
+  }
+
+  const ramp = o.ramp;
+  if (ramp && typeof ramp === "object") {
+    const r = ramp as Record<string, unknown>;
+    const out: RampConfig = {};
+    if (typeof r.defaultCaption === "string") out.defaultCaption = r.defaultCaption;
+    if (Array.isArray(r.postTypes)) {
+      out.postTypes = r.postTypes.filter((x) => typeof x === "string");
+    }
+    if (Array.isArray(r.defaultTags)) out.defaultTags = r.defaultTags;
+    if (Array.isArray(r.defaultChips)) out.defaultChips = r.defaultChips;
+    if (Array.isArray(r.backgrounds)) out.backgrounds = r.backgrounds;
+    if (Array.isArray(r.defaultLinks)) out.defaultLinks = r.defaultLinks;
+    if (Object.keys(out).length > 0) base.ramp = out;
   }
 
   return base;
