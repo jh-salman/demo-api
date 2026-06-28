@@ -172,4 +172,19 @@ export const rampService = {
     const prisma = requirePrisma();
     await prisma.rampPost.delete({ where: { id } });
   },
+
+  /** Public share payload — generated artifact only. */
+  async getPublic(id: string) {
+    const post = await this.get(id);
+    if (!post) return null;
+    const generated = post.generatedImages;
+    if (!generated.length) return null;
+    return {
+      id: post.id,
+      clientName: post.clientName,
+      clientSub: post.clientSub,
+      generatedImage: generated[generated.length - 1] ?? null,
+      status: post.status,
+    };
+  },
 };

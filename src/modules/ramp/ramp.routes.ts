@@ -24,9 +24,11 @@ const uploadMw = multer({
 export const rampRouter = Router();
 
 /** RAMP post CRUD (queue row + build doc in one record). */
+rampRouter.get("/public/:id", rampRuntimeController.publicGet);
 rampRouter.get("/posts", rampRuntimeController.list);
 rampRouter.get("/posts/:id", rampRuntimeController.get);
 rampRouter.post("/posts", rampRuntimeController.create);
+rampRouter.post("/posts/:id/generate", rampRuntimeController.generate);
 rampRouter.patch("/posts/:id", rampRuntimeController.patch);
 rampRouter.delete("/posts/:id", rampRuntimeController.remove);
 

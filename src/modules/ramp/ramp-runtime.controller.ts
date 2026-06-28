@@ -1,7 +1,9 @@
 import type { Request, Response } from "express";
+import { env } from "../../config/env.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
 import { emitRampPostUpdated } from "../../realtime/io.js";
+import { rampGenerateService } from "./ramp-generate.service.js";
 import { rampService, type RampPostInput } from "./ramp-runtime.service.js";
 
 function handleDbError(err: unknown): never {
@@ -63,6 +65,21 @@ export const rampRuntimeController = {
     }
   }),
 
+  /** Public share — generated image only (no auth). */
+  publicGet: asyncHandler(async (req: Request, res: Response) => {
+    const id = String(req.params.id || "").trim();
+    if (!id) throw new HttpError(400, "id is required");
+    try {
+      const post = await rampService.getPublic(id);
+      if (!post?.generatedImage) {
+        throw new HttpError(404, "Generated image not found");
+      }
+      res.json({ post });
+    } catch (e) {
+      handleDbError(e);
+    }
+  }),
+
   create: asyncHandler(async (req: Request, res: Response) => {
     const input = readBody(req.body);
     if (!input.clientName) throw new HttpError(400, "clientName is required");
@@ -94,6 +111,56 @@ export const rampRuntimeController = {
       await rampService.remove(id);
       emitRampPostUpdated({ post: { id, status: "dismissed" } });
       res.json({ ok: true });
+    } catch (e) {
+      handleDbError(e);
+    }
+  }),
+
+  /** Start async image generation — returns 202 immediately (Render-safe). */
+  generate: asyncHandler(async (req: Request, res: Response) => {
+    const id = String(req.params.id || "").trim();
+    if (!id) throw new HttpError(400, "id is required");
+
+    if (!env.OPENAI_API_KEY) {
+      throw new HttpError(503, "OPENAI_API_KEY is not configured");
+    }
+
+    try {
+      const existing = await rampService.get(id);
+      if (!existing) throw new HttpError(404, "Post not found");
+
+      if (existing.genState === "generating") {
+        res.status(202).json({ post: existing });
+        return;
+      }
+
+      const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<
+        string,
+        unknown
+      >;
+      const caption =
+        typeof body.caption === "string" && body.caption.trim()
+          ? body.caption.trim()
+          : String(existing.caption || "").trim();
+
+      if (!caption) {
+        throw new HttpError(400, "Enter a prompt first.");
+      }
+
+      const isStation = existing.source === "station";
+      if (!existing.heroImage && !isStation) {
+        throw new HttpError(400, "No photo on this post — capture one first.");
+      }
+
+      const post = await rampService.update(id, {
+        caption,
+        genState: "generating",
+        status: "building",
+      });
+      emitRampPostUpdated({ post });
+      res.status(202).json({ post });
+
+      rampGenerateService.runInBackground(id);
     } catch (e) {
       handleDbError(e);
     }
