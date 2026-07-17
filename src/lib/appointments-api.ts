@@ -4,6 +4,7 @@ import { getPrisma } from "./prisma.js";
 export type AppointmentDto = {
   id: string;
   clientName: string;
+  clientPhone: string | null;
   service: string;
   start: string;
   end: string;
@@ -12,6 +13,7 @@ export type AppointmentDto = {
   notes: string;
   seriesId: string | null;
   staffId: string | null;
+  salonId: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -27,6 +29,7 @@ export function toDto(row: SalonxAppointment): AppointmentDto {
   return {
     id: row.id,
     clientName: row.clientName,
+    clientPhone: row.clientPhone ?? null,
     service: row.service,
     start: row.startAt.toISOString(),
     end: row.endAt.toISOString(),
@@ -35,6 +38,7 @@ export function toDto(row: SalonxAppointment): AppointmentDto {
     notes: row.notes,
     seriesId: row.seriesId,
     staffId: row.staffId,
+    salonId: row.salonId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

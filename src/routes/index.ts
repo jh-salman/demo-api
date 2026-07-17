@@ -14,6 +14,7 @@ import { clientConsultationRouter } from "../modules/client-consultation/client-
 import { appointmentVisitRouter } from "../modules/appointment-visit/appointment-visit.routes.js";
 import { productCatalogRouter } from "../modules/product-catalog/product-catalog.routes.js";
 import { rampRouter } from "../modules/ramp/ramp.routes.js";
+import { micrositeRouter } from "../modules/microsite/microsite.routes.js";
 
 export function registerRoutes(app: Express) {
   app.use("/health", healthRouter);
@@ -33,4 +34,5 @@ export function registerRoutes(app: Express) {
   app.use("/api/appointment-visit", appointmentVisitRouter);
   app.use("/api/appointments", appointmentsRouter);
   app.use("/api/ramp", rampRouter);
+  app.use("/api/microsite", micrositeRouter);
 }
