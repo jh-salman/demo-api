@@ -15,9 +15,11 @@ import { appointmentVisitRouter } from "../modules/appointment-visit/appointment
 import { productCatalogRouter } from "../modules/product-catalog/product-catalog.routes.js";
 import { rampRouter } from "../modules/ramp/ramp.routes.js";
 import { micrositeRouter } from "../modules/microsite/microsite.routes.js";
+import { authAppRouter } from "../modules/auth/onboarding.routes.js";
 
 export function registerRoutes(app: Express) {
   app.use("/health", healthRouter);
+  app.use("/api/auth-app", authAppRouter);
   app.use(
     "/uploads",
     express.static(path.join(process.cwd(), "public", "uploads"), { fallthrough: true }),

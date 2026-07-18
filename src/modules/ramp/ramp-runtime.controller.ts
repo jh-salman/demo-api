@@ -2,9 +2,15 @@ import type { Request, Response } from "express";
 import { env } from "../../config/env.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
+import type { AuthedRequest } from "../../middleware/auth.middleware.js";
+import { LEGACY_SALON_ID } from "../../lib/tenant.js";
 import { emitRampPostUpdated } from "../../realtime/io.js";
 import { rampGenerateService } from "./ramp-generate.service.js";
 import { rampService, type RampPostInput } from "./ramp-runtime.service.js";
+
+function salonIdOf(req: AuthedRequest) {
+  return req.salonId || LEGACY_SALON_ID;
+}
 
 function handleDbError(err: unknown): never {
   if (err instanceof HttpError) throw err;
@@ -44,9 +50,12 @@ function readBody(body: unknown): Partial<RampPostInput> {
 }
 
 export const rampRuntimeController = {
-  list: asyncHandler(async (req: Request, res: Response) => {
+  list: asyncHandler(async (req: AuthedRequest, res: Response) => {
     try {
-      const posts = await rampService.list(str(req.query.status));
+      const posts = await rampService.list(
+        str(req.query.status),
+        salonIdOf(req),
+      );
       res.json({ posts });
     } catch (e) {
       handleDbError(e);
@@ -80,11 +89,14 @@ export const rampRuntimeController = {
     }
   }),
 
-  create: asyncHandler(async (req: Request, res: Response) => {
+  create: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const input = readBody(req.body);
     if (!input.clientName) throw new HttpError(400, "clientName is required");
     try {
-      const post = await rampService.create(input as RampPostInput);
+      const post = await rampService.create({
+        ...(input as RampPostInput),
+        salonId: salonIdOf(req),
+      });
       emitRampPostUpdated({ post });
       res.status(201).json({ post });
     } catch (e) {

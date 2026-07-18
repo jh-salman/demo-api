@@ -6,6 +6,7 @@ import { getPrisma } from "../../lib/prisma.js";
 import { emitAppointmentCreated } from "../../realtime/io.js";
 import { micrositeService } from "./microsite.service.js";
 import { isValidSlug, normalizeSlug } from "./microsite.templates.js";
+import type { AuthedRequest } from "../../middleware/auth.middleware.js";
 
 function statusFromErr(e: unknown): number {
   if (e && typeof e === "object" && "status" in e) {
@@ -27,13 +28,23 @@ export const micrositeController = {
     res.json({ templates: micrositeService.listTemplates() });
   }),
 
-  listSalons: asyncHandler(async (_req: Request, res: Response) => {
+  listSalons: asyncHandler(async (req: AuthedRequest, res: Response) => {
     if (!getPrisma()) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);
       return;
     }
-    res.json({ salons: await micrositeService.listSalons() });
+    const prisma = getPrisma();
+    const userId = req.authSession?.user?.id;
+    if (!userId || !prisma) {
+      throw new HttpError(401, "Unauthorized");
+    }
+    const members = await prisma.member.findMany({
+      where: { userId },
+      select: { organizationId: true },
+    });
+    const orgIds = members.map((m) => m.organizationId);
+    res.json({ salons: await micrositeService.listSalons(orgIds) });
   }),
 
   checkSlug: asyncHandler(async (req: Request, res: Response) => {
@@ -51,11 +62,15 @@ export const micrositeController = {
     res.json({ slug, available: !existing });
   }),
 
-  create: asyncHandler(async (req: Request, res: Response) => {
+  create: asyncHandler(async (req: AuthedRequest, res: Response) => {
     if (!getPrisma()) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);
       return;
+    }
+    const orgId = req.authSession?.session.activeOrganizationId;
+    if (!orgId) {
+      throw new HttpError(403, "No active organization");
     }
     const body = (req.body || {}) as Record<string, unknown>;
     const templateId =
@@ -67,6 +82,7 @@ export const micrositeController = {
         templateId,
         slug,
         name,
+        organizationId: orgId,
       });
       res.status(201).json({ salon });
     } catch (e) {
@@ -74,13 +90,24 @@ export const micrositeController = {
     }
   }),
 
-  patchSalon: asyncHandler(async (req: Request, res: Response) => {
+  patchSalon: asyncHandler(async (req: AuthedRequest, res: Response) => {
     if (!getPrisma()) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);
       return;
     }
+    const orgId = req.authSession?.session.activeOrganizationId;
+    if (!orgId) {
+      throw new HttpError(403, "No active organization");
+    }
     const slug = String(req.params.slug || "");
+    const existing = await micrositeService.getBySlug(slug);
+    if (!existing) throw new HttpError(404, "Salon not found");
+    const prisma = getPrisma()!;
+    const row = await prisma.salon.findUnique({ where: { slug: normalizeSlug(slug) } });
+    if (row?.organizationId && row.organizationId !== orgId) {
+      throw new HttpError(403, "Not your salon");
+    }
     const body = (req.body || {}) as Record<string, unknown>;
     try {
       const salon = await micrositeService.updateSalon(slug, {

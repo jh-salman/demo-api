@@ -17,6 +17,7 @@ export type SalonPublicDto = {
   id: string;
   name: string;
   slug: string;
+  organizationId: string | null;
   templateId: string;
   phone: string | null;
   timezone: string;
@@ -38,6 +39,7 @@ export function salonToPublic(row: Salon): SalonPublicDto {
     id: row.id,
     name: row.name,
     slug: row.slug,
+    organizationId: row.organizationId ?? null,
     templateId: row.templateId,
     phone: row.phone,
     timezone: row.timezone,
@@ -94,10 +96,15 @@ export const micrositeService = {
     return row ? salonToPublic(row) : null;
   },
 
-  async listSalons() {
+  async listSalons(organizationIds: string[]) {
     const prisma = getPrisma();
     if (!prisma) return [];
-    const rows = await prisma.salon.findMany({ orderBy: { createdAt: "asc" } });
+    // Never list global catalog — empty membership → empty result.
+    if (!organizationIds.length) return [];
+    const rows = await prisma.salon.findMany({
+      where: { organizationId: { in: organizationIds } },
+      orderBy: { createdAt: "asc" },
+    });
     return rows.map(salonToPublic);
   },
 
@@ -105,6 +112,7 @@ export const micrositeService = {
     templateId: string;
     slug: string;
     name?: string;
+    organizationId?: string | null;
   }) {
     const prisma = getPrisma();
     if (!prisma) throw new Error("DATABASE_URL not configured");
@@ -130,9 +138,23 @@ export const micrositeService = {
       throw err;
     }
 
+    if (input.organizationId) {
+      const owned = await prisma.salon.findUnique({
+        where: { organizationId: input.organizationId },
+      });
+      if (owned) {
+        const err = new Error("Organization already has a salon") as Error & {
+          status: number;
+        };
+        err.status = 409;
+        throw err;
+      }
+    }
+
     const name = (input.name || slug).trim() || slug;
     const row = await prisma.salon.create({
       data: {
+        organizationId: input.organizationId || null,
         name,
         slug,
         templateId: template.id,

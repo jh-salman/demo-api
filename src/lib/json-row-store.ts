@@ -5,6 +5,7 @@ import {
   notePrismaDbFailure,
   shouldSkipPrismaDb,
 } from "./prisma-resilience.js";
+import { LEGACY_SALON_ID } from "./tenant.js";
 
 export type JsonRowGetResult = {
   stored: boolean;
@@ -39,7 +40,13 @@ type RowDelegate = {
   }) => Promise<{ items: unknown; updatedAt: Date }>;
 };
 
-export function createJsonRowStore(delegate: RowDelegate, maxItems = 500) {
+export function createJsonRowStore(
+  delegate: RowDelegate,
+  maxItems = 500,
+  rowId: string = LEGACY_SALON_ID,
+) {
+  const id = rowId || LEGACY_SALON_ID;
+
   function asItems(v: unknown): unknown[] {
     return Array.isArray(v) ? v.slice(0, maxItems) : [];
   }
@@ -50,7 +57,7 @@ export function createJsonRowStore(delegate: RowDelegate, maxItems = 500) {
       return { stored: false, items: [] };
     }
     try {
-      const row = await delegate.findUnique({ where: { id: "default" } });
+      const row = await delegate.findUnique({ where: { id } });
       if (!row) {
         return { stored: false, items: [] };
       }
@@ -65,7 +72,10 @@ export function createJsonRowStore(delegate: RowDelegate, maxItems = 500) {
     }
   }
 
-  async function put(items: unknown, opts: JsonRowPutOptions = {}): Promise<JsonRowGetResult> {
+  async function put(
+    items: unknown,
+    opts: JsonRowPutOptions = {},
+  ): Promise<JsonRowGetResult> {
     const prisma = getPrisma();
     if (!prisma) {
       throw new Error("DATABASE_URL not configured");
@@ -73,7 +83,7 @@ export function createJsonRowStore(delegate: RowDelegate, maxItems = 500) {
     const payload = asItems(items) as Prisma.InputJsonValue;
     const expected = opts.expectedUpdatedAt?.trim();
     if (expected) {
-      const existing = await delegate.findUnique({ where: { id: "default" } });
+      const existing = await delegate.findUnique({ where: { id } });
       if (existing && existing.updatedAt.toISOString() !== expected) {
         throw new JsonRowConflictError({
           stored: true,
@@ -83,8 +93,8 @@ export function createJsonRowStore(delegate: RowDelegate, maxItems = 500) {
       }
     }
     await delegate.upsert({
-      where: { id: "default" },
-      create: { id: "default", items: payload },
+      where: { id },
+      create: { id, items: payload },
       update: { items: payload },
     });
     return get();

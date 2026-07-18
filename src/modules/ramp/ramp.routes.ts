@@ -3,6 +3,7 @@ import { Router } from "express";
 import multer from "multer";
 import os from "node:os";
 import path from "node:path";
+import { attachTenant } from "../../middleware/auth.middleware.js";
 import { rampController } from "./ramp.controller.js";
 import { rampRuntimeController } from "./ramp-runtime.controller.js";
 
@@ -25,6 +26,7 @@ export const rampRouter = Router();
 
 /** RAMP post CRUD (queue row + build doc in one record). */
 rampRouter.get("/public/:id", rampRuntimeController.publicGet);
+rampRouter.use(attachTenant);
 rampRouter.get("/posts", rampRuntimeController.list);
 rampRouter.get("/posts/:id", rampRuntimeController.get);
 rampRouter.post("/posts", rampRuntimeController.create);

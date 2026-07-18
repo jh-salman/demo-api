@@ -1,21 +1,27 @@
-import type { Request, Response } from "express";
+import type { Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
+import type { AuthedRequest } from "../../middleware/auth.middleware.js";
 import { JsonPayloadConflictError } from "../../lib/json-payload-store.js";
+import { LEGACY_SALON_ID } from "../../lib/tenant.js";
 import {
   clientConsultationService,
   normalizeClientKey,
 } from "./client-consultation.service.js";
 import { emitConsultationUpdated } from "../../realtime/io.js";
 
+function salonIdOf(req: AuthedRequest) {
+  return req.salonId || LEGACY_SALON_ID;
+}
+
 export const clientConsultationController = {
-  get: asyncHandler(async (req: Request, res: Response) => {
+  get: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const clientKey = normalizeClientKey(String(req.params.clientKey || ""));
     if (!clientKey) throw new HttpError(400, "clientKey required");
-    res.json(await clientConsultationService.get(clientKey));
+    res.json(await clientConsultationService.get(clientKey, salonIdOf(req)));
   }),
 
-  put: asyncHandler(async (req: Request, res: Response) => {
+  put: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const clientKey = normalizeClientKey(String(req.params.clientKey || ""));
     if (!clientKey) throw new HttpError(400, "clientKey required");
     const body = req.body;
@@ -28,6 +34,7 @@ export const clientConsultationController = {
         clientKey,
         b.record,
         typeof b.expectedUpdatedAt === "string" ? b.expectedUpdatedAt : null,
+        salonIdOf(req),
       );
       emitConsultationUpdated(next);
       res.json(next);

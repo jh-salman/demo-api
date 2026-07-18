@@ -9,6 +9,7 @@ export const RESERVED_SLUGS = new Set([
   "cdn",
   "mail",
   "status",
+  "demo", // demo.salonx.com = main Salon X app host
   "demo-api",
   "m",
   "salonx",

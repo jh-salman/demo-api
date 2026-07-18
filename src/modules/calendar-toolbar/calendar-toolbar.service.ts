@@ -6,6 +6,7 @@ import {
   notePrismaDbFailure,
   shouldSkipPrismaDb,
 } from "../../lib/prisma-resilience.js";
+import { LEGACY_SALON_ID } from "../../lib/tenant.js";
 
 const MAX_ITEMS = 500;
 
@@ -21,14 +22,15 @@ function asJsonArray(v: unknown): unknown[] {
   return Array.isArray(v) ? v.slice(0, MAX_ITEMS) : [];
 }
 
-async function getToolbarState() {
+async function getToolbarState(salonId: string = LEGACY_SALON_ID) {
+  const id = salonId || LEGACY_SALON_ID;
   const prisma = getPrisma();
   if (!prisma || shouldSkipPrismaDb()) {
     return emptyToolbarState();
   }
   try {
     const row = await prisma.salonxCalendarToolbar.findUnique({
-      where: { id: "default" },
+      where: { id },
     });
     if (!row) {
       return emptyToolbarState();
@@ -49,7 +51,9 @@ async function putToolbarState(
   parkedFromDrag: unknown,
   toolbarEvents: unknown,
   expectedUpdatedAt?: string | null,
+  salonId: string = LEGACY_SALON_ID,
 ) {
+  const id = salonId || LEGACY_SALON_ID;
   const prisma = getPrisma();
   if (!prisma) {
     throw new Error("DATABASE_URL not configured");
@@ -57,7 +61,7 @@ async function putToolbarState(
   const expected = expectedUpdatedAt?.trim();
   if (expected) {
     const existing = await prisma.salonxCalendarToolbar.findUnique({
-      where: { id: "default" },
+      where: { id },
     });
     if (existing && existing.updatedAt.toISOString() !== expected) {
       throw new JsonRowConflictError({
@@ -73,9 +77,9 @@ async function putToolbarState(
   const p = asJsonArray(parkedFromDrag) as Prisma.InputJsonValue;
   const t = asJsonArray(toolbarEvents) as Prisma.InputJsonValue;
   await prisma.salonxCalendarToolbar.upsert({
-    where: { id: "default" },
+    where: { id },
     create: {
-      id: "default",
+      id,
       parkedFromDrag: p,
       toolbarEvents: t,
     },
@@ -84,7 +88,7 @@ async function putToolbarState(
       toolbarEvents: t,
     },
   });
-  return getToolbarState();
+  return getToolbarState(id);
 }
 
 export const calendarToolbarService = {

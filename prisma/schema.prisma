@@ -18,9 +18,12 @@ model SalonxBuildConfig {
   publishedPayload Json?
 }
 
-/// Public microsite salon (unique subdomain slug).
+/// Public microsite salon (unique subdomain slug). Linked 1:1 to Better Auth Organization when owned.
 model Salon {
   id               String   @id @default(cuid())
+  /// Better Auth organization id (set on onboarding / create-from-template).
+  organizationId   String?  @unique
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   name             String
   slug             String   @unique
   templateId       String   @default("sx-book-v1")
@@ -153,4 +156,118 @@ model RampPost {
   @@index([salonId, status, createdAt])
   @@index([clientId])
   @@map("RampPost")
+}
+
+// ── Better Auth (+ phoneNumber + organization plugins) ───────────────────────
+
+model User {
+  id                   String       @id @default(cuid())
+  name                 String
+  email                String       @unique
+  emailVerified        Boolean      @default(false)
+  image                String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  phoneNumber          String?      @unique
+  phoneNumberVerified  Boolean?     @default(false)
+  sessions             Session[]
+  accounts             Account[]
+  members              Member[]
+  invitations          Invitation[]
+
+  @@map("user")
+}
+
+model Session {
+  id                   String   @id @default(cuid())
+  expiresAt            DateTime
+  token                String   @unique
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeOrganizationId String?
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  logo        String?
+  createdAt   DateTime     @default(now())
+  metadata    String?
+  members     Member[]
+  invitations Invitation[]
+  salon       Salon?
+
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String
+  status         String
+  expiresAt      DateTime
+  inviterId      String
+  inviter        User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("invitation")
 }

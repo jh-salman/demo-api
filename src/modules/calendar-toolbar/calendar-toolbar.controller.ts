@@ -1,17 +1,24 @@
-import type { Request, Response } from "express";
+import type { Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
 import { JsonRowConflictError } from "../../lib/json-row-store.js";
+import { LEGACY_SALON_ID } from "../../lib/tenant.js";
+import type { AuthedRequest } from "../../middleware/auth.middleware.js";
 import { calendarToolbarService } from "./calendar-toolbar.service.js";
 import { emitCalendarToolbarUpdated } from "../../realtime/io.js";
 
+function salonIdOf(req: AuthedRequest) {
+  return req.salonId || LEGACY_SALON_ID;
+}
+
 export const calendarToolbarController = {
-  get: asyncHandler(async (_req: Request, res: Response) => {
-    const body = await calendarToolbarService.get();
+  get: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const body = await calendarToolbarService.get(salonIdOf(req));
     res.json(body);
   }),
 
-  put: asyncHandler(async (req: Request, res: Response) => {
+  put: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const salonId = salonIdOf(req);
     const body = req.body;
     if (!body || typeof body !== "object") {
       throw new HttpError(400, "Expected JSON object");
@@ -22,6 +29,7 @@ export const calendarToolbarController = {
         b.parkedFromDrag,
         b.toolbarEvents,
         typeof b.expectedUpdatedAt === "string" ? b.expectedUpdatedAt : null,
+        salonId,
       );
       emitCalendarToolbarUpdated({
         stored: next.stored,
@@ -32,7 +40,7 @@ export const calendarToolbarController = {
       res.json(next);
     } catch (e) {
       if (e instanceof JsonRowConflictError) {
-        const current = await calendarToolbarService.get();
+        const current = await calendarToolbarService.get(salonId);
         res.status(409).json({ error: e.message, ...current });
         return;
       }

@@ -1,13 +1,19 @@
 import type { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
+import type { AuthedRequest } from "../../middleware/auth.middleware.js";
 import { prismaUnavailableResponse } from "../../lib/appointments-api.js";
+import { LEGACY_SALON_ID } from "../../lib/tenant.js";
 import {
   emitAppointmentCreated,
   emitAppointmentDeleted,
   emitAppointmentUpdated,
 } from "../../realtime/io.js";
 import { appointmentsService } from "./appointments.service.js";
+
+function salonIdOf(req: AuthedRequest) {
+  return req.salonId || LEGACY_SALON_ID;
+}
 
 function parseRange(
   fromRaw: string | undefined,
@@ -138,7 +144,7 @@ function parsePatchBody(body: Request["body"]): {
 }
 
 export const appointmentsController = {
-  list: asyncHandler(async (req: Request, res: Response) => {
+  list: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const range = parseRange(
       typeof req.query.from === "string" ? req.query.from : undefined,
       typeof req.query.to === "string" ? req.query.to : undefined,
@@ -146,7 +152,12 @@ export const appointmentsController = {
     if ("error" in range) throw new HttpError(400, range.error);
     const limitRaw = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 2000;
     const limit = Number.isFinite(limitRaw) ? limitRaw : 2000;
-    const list = await appointmentsService.listOverlapping(range.from, range.to, limit);
+    const list = await appointmentsService.listOverlapping(
+      range.from,
+      range.to,
+      limit,
+      salonIdOf(req),
+    );
     if (list === null) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);
@@ -155,9 +166,9 @@ export const appointmentsController = {
     res.json({ appointments: list });
   }),
 
-  create: asyncHandler(async (req: Request, res: Response) => {
+  create: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const input = parseCreateBody(req.body);
-    const appointment = await appointmentsService.create(input);
+    const appointment = await appointmentsService.create(input, salonIdOf(req));
     if (appointment === null) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);
@@ -167,9 +178,9 @@ export const appointmentsController = {
     res.status(201).json({ appointment });
   }),
 
-  getById: asyncHandler(async (req: Request, res: Response) => {
+  getById: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const id = req.params.id as string;
-    const apt = await appointmentsService.getById(id);
+    const apt = await appointmentsService.getById(id, salonIdOf(req));
     if (apt === undefined) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);
@@ -182,10 +193,14 @@ export const appointmentsController = {
     res.json({ appointment: apt });
   }),
 
-  patch: asyncHandler(async (req: Request, res: Response) => {
+  patch: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const id = req.params.id as string;
     const data = parsePatchBody(req.body);
-    const appointment = await appointmentsService.update(id, data);
+    const appointment = await appointmentsService.update(
+      id,
+      data,
+      salonIdOf(req),
+    );
     if (appointment === null) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);
@@ -199,9 +214,9 @@ export const appointmentsController = {
     res.json({ appointment });
   }),
 
-  remove: asyncHandler(async (req: Request, res: Response) => {
+  remove: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const id = req.params.id as string;
-    const ok = await appointmentsService.delete(id);
+    const ok = await appointmentsService.delete(id, salonIdOf(req));
     if (ok === null) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);

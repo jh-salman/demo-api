@@ -1,14 +1,19 @@
 import { Router } from "express";
 import { micrositeController } from "./microsite.controller.js";
+import { requireSession } from "../../middleware/auth.middleware.js";
 
 export const micrositeRouter = Router();
 
-/** Template + create (stylist/admin surface — open for MVP like other demo-api routes). */
+/** Template list stays readable; create/patch require session + active org. */
 micrositeRouter.get("/templates", micrositeController.listTemplates);
-micrositeRouter.get("/salons", micrositeController.listSalons);
+micrositeRouter.get("/salons", requireSession, micrositeController.listSalons);
 micrositeRouter.get("/slug-available", micrositeController.checkSlug);
-micrositeRouter.post("/create", micrositeController.create);
-micrositeRouter.patch("/salons/:slug", micrositeController.patchSalon);
+micrositeRouter.post("/create", requireSession, micrositeController.create);
+micrositeRouter.patch(
+  "/salons/:slug",
+  requireSession,
+  micrositeController.patchSalon,
+);
 
 /** Public booking surface — resolved by slug. */
 micrositeRouter.get("/public/salons/:slug", micrositeController.getPublicSalon);
