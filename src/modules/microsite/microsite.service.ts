@@ -211,13 +211,13 @@ export const micrositeService = {
     }
   },
 
-  async getServices() {
-    const { serviceCatalog } = await serviceCatalogService.get();
+  async getServices(salonId?: string) {
+    const { serviceCatalog } = await serviceCatalogService.get(salonId);
     return Array.isArray(serviceCatalog) ? serviceCatalog : [];
   },
 
-  async getStaff() {
-    const { staff } = await staffService.get();
+  async getStaff(salonId?: string) {
+    const { staff } = await staffService.get(salonId);
     return Array.isArray(staff) ? staff : [];
   },
 
@@ -242,14 +242,20 @@ export const micrositeService = {
     const windows = input.salon.bookingHours[dayKey] || [];
     if (!windows.length) return { slots: [], date: input.date, dayKey };
 
-    const services = (await this.getServices()) as Record<string, unknown>[];
+    const services = (await this.getServices(input.salon.id)) as Record<
+      string,
+      unknown
+    >[];
     const service = input.serviceId
       ? services.find((s) => String(s.id) === input.serviceId)
       : services[0];
     const duration = service ? serviceDurationMinutes(service) : 60;
     const step = input.slotMinutes && input.slotMinutes > 0 ? input.slotMinutes : 15;
 
-    const staffList = (await this.getStaff()) as { id?: string; name?: string }[];
+    const staffList = (await this.getStaff(input.salon.id)) as {
+      id?: string;
+      name?: string;
+    }[];
     const staffIds = input.staffId
       ? [input.staffId]
       : staffList.map((s) => s.id).filter((id): id is string => Boolean(id));
@@ -329,7 +335,10 @@ export const micrositeService = {
       throw err;
     }
 
-    const services = (await this.getServices()) as Record<string, unknown>[];
+    const services = (await this.getServices(input.salon.id)) as Record<
+      string,
+      unknown
+    >[];
     const service = input.serviceId
       ? services.find((s) => String(s.id) === input.serviceId)
       : null;

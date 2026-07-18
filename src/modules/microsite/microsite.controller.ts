@@ -170,8 +170,8 @@ export const micrositeController = {
       res.status(u.status).json(u.body);
       return;
     }
-    await requirePublicSalon(String(req.params.slug || ""));
-    const services = await micrositeService.getServices();
+    const salon = await requirePublicSalon(String(req.params.slug || ""));
+    const services = await micrositeService.getServices(salon.id);
     res.json({ services });
   }),
 
@@ -181,8 +181,8 @@ export const micrositeController = {
       res.status(u.status).json(u.body);
       return;
     }
-    await requirePublicSalon(String(req.params.slug || ""));
-    const staff = await micrositeService.getStaff();
+    const salon = await requirePublicSalon(String(req.params.slug || ""));
+    const staff = await micrositeService.getStaff(salon.id);
     res.json({ staff });
   }),
 
