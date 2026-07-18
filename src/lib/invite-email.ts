@@ -1,7 +1,13 @@
 import nodemailer from "nodemailer";
 
+/**
+ * Public app origin used in the invite accept link.
+ * Prefer APP_PUBLIC_ORIGIN (e.g. https://demo.salonx.com) so emails never point
+ * at localhost, even when demo-api runs locally. Falls back to WEB_ORIGIN/dev.
+ */
 function webOrigin(): string {
   return (
+    process.env.APP_PUBLIC_ORIGIN?.trim().replace(/\/$/, "") ||
     process.env.WEB_ORIGIN?.trim().replace(/\/$/, "") ||
     process.env.BETTER_AUTH_URL?.trim().replace(/\/$/, "") ||
     "http://localhost:5173"
