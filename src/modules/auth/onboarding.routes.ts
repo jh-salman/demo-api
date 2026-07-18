@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getMe,
+  postAcceptInvite,
   postCreateOrganization,
   postOnboard,
   postSwitchOrganization,
@@ -12,3 +13,4 @@ authAppRouter.get("/me", getMe);
 authAppRouter.post("/onboard", postOnboard);
 authAppRouter.post("/organizations", postCreateOrganization);
 authAppRouter.post("/switch-organization", postSwitchOrganization);
+authAppRouter.post("/accept-invite", postAcceptInvite);

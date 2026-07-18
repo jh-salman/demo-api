@@ -318,3 +318,100 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
     next(e);
   }
 }
+
+/**
+ * POST /api/auth-app/accept-invite — link-based invitation accept.
+ *
+ * The email invite link is treated as the capability token: any signed-in user
+ * who opens it joins the invitation's organization (phone-first sign-in means
+ * the account email won't match the invited email, so we skip that check).
+ * Adds membership, marks the invite accepted, and sets it as the active org.
+ */
+export async function postAcceptInvite(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (!session) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const prisma = getPrisma();
+    if (!prisma) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+
+    const invitationId = String(req.body?.invitationId || "").trim();
+    if (!invitationId) {
+      res.status(400).json({ error: "invitationId is required" });
+      return;
+    }
+
+    const invite = await prisma.invitation.findUnique({
+      where: { id: invitationId },
+    });
+    if (!invite) {
+      res.status(404).json({ error: "Invitation not found" });
+      return;
+    }
+    if (invite.status !== "pending") {
+      res
+        .status(409)
+        .json({ error: "Invitation already used", code: "NOT_PENDING" });
+      return;
+    }
+    if (invite.expiresAt.getTime() < Date.now()) {
+      await prisma.invitation
+        .update({ where: { id: invitationId }, data: { status: "expired" } })
+        .catch(() => undefined);
+      res.status(410).json({ error: "Invitation expired", code: "EXPIRED" });
+      return;
+    }
+
+    const userId = session.user.id;
+    const existingMember = await prisma.member.findUnique({
+      where: {
+        organizationId_userId: { organizationId: invite.organizationId, userId },
+      },
+    });
+    if (!existingMember) {
+      await prisma.member.create({
+        data: {
+          organizationId: invite.organizationId,
+          userId,
+          role: invite.role || "member",
+        },
+      });
+    }
+
+    await prisma.invitation.update({
+      where: { id: invitationId },
+      data: { status: "accepted" },
+    });
+
+    await auth.api.setActiveOrganization({
+      body: { organizationId: invite.organizationId },
+      headers: fromNodeHeaders(req.headers),
+    });
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: invite.organizationId },
+    });
+    const salon = await prisma.salon.findUnique({
+      where: { organizationId: invite.organizationId },
+    });
+
+    res.json({
+      ok: true,
+      organization,
+      salon: salon ? salonToPublic(salon) : null,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
