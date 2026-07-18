@@ -320,6 +320,298 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
 }
 
 /**
+ * GET /api/auth-app/org-invitations — all invitations for the active org
+ * (pending / accepted / canceled / expired) so the Staff UI stays dynamic.
+ */
+export async function getOrgInvitations(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (!session) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const orgId = session.session.activeOrganizationId;
+    if (!orgId) {
+      res.status(403).json({ error: "No active organization", code: "NO_ORG" });
+      return;
+    }
+    const prisma = getPrisma();
+    if (!prisma) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+
+    const caller = await prisma.member.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: orgId,
+          userId: session.user.id,
+        },
+      },
+    });
+    if (!caller) {
+      res.status(403).json({ error: "Not a member of this organization" });
+      return;
+    }
+
+    const now = Date.now();
+    const rows = await prisma.invitation.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Mark stale pending rows as expired for the response (and persist).
+    const invitations = await Promise.all(
+      rows.map(async (row) => {
+        let status = row.status;
+        if (
+          status === "pending" &&
+          row.expiresAt.getTime() < now
+        ) {
+          status = "expired";
+          await prisma.invitation
+            .update({
+              where: { id: row.id },
+              data: { status: "expired" },
+            })
+            .catch(() => undefined);
+        }
+        return {
+          id: row.id,
+          email: row.email,
+          role: row.role,
+          status,
+          expiresAt: row.expiresAt,
+          createdAt: row.createdAt,
+          inviterId: row.inviterId,
+        };
+      }),
+    );
+
+    res.json({ invitations });
+  } catch (e) {
+    next(e);
+  }
+}
+
+/**
+ * GET /api/auth-app/org-members — members of the active organization.
+ */
+export async function getOrgMembers(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (!session) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const orgId = session.session.activeOrganizationId;
+    if (!orgId) {
+      res.status(403).json({ error: "No active organization", code: "NO_ORG" });
+      return;
+    }
+    const prisma = getPrisma();
+    if (!prisma) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+
+    const caller = await prisma.member.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: orgId,
+          userId: session.user.id,
+        },
+      },
+    });
+    if (!caller) {
+      res.status(403).json({ error: "Not a member of this organization" });
+      return;
+    }
+
+    const rows = await prisma.member.findMany({
+      where: { organizationId: orgId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true,
+            image: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    res.json({
+      members: rows.map((m) => ({
+        id: m.id,
+        role: m.role,
+        createdAt: m.createdAt,
+        userId: m.userId,
+        user: m.user,
+        isSelf: m.userId === session.user.id,
+      })),
+      callerRole: caller.role,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+/**
+ * POST /api/auth-app/remove-member — remove a member from the active org.
+ * Owners/admins can remove others; cannot remove the last owner or yourself via this route.
+ */
+export async function postRemoveMember(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (!session) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const orgId = session.session.activeOrganizationId;
+    if (!orgId) {
+      res.status(403).json({ error: "No active organization", code: "NO_ORG" });
+      return;
+    }
+    const prisma = getPrisma();
+    if (!prisma) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+
+    const memberId = String(req.body?.memberId || "").trim();
+    if (!memberId) {
+      res.status(400).json({ error: "memberId is required" });
+      return;
+    }
+
+    const caller = await prisma.member.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: orgId,
+          userId: session.user.id,
+        },
+      },
+    });
+    const role = String(caller?.role || "").toLowerCase();
+    if (!caller || (role !== "owner" && role !== "admin")) {
+      res.status(403).json({ error: "Only owners or admins can remove members" });
+      return;
+    }
+
+    const target = await prisma.member.findUnique({ where: { id: memberId } });
+    if (!target || target.organizationId !== orgId) {
+      res.status(404).json({ error: "Member not found" });
+      return;
+    }
+    if (target.userId === session.user.id) {
+      res.status(400).json({ error: "You cannot remove yourself" });
+      return;
+    }
+    if (String(target.role).toLowerCase() === "owner") {
+      const ownerCount = await prisma.member.count({
+        where: { organizationId: orgId, role: "owner" },
+      });
+      if (ownerCount <= 1) {
+        res.status(400).json({ error: "Cannot remove the last owner" });
+        return;
+      }
+    }
+
+    await prisma.member.delete({ where: { id: memberId } });
+    res.json({ ok: true, removedMemberId: memberId });
+  } catch (e) {
+    next(e);
+  }
+}
+
+/**
+ * POST /api/auth-app/delete-invitation — hard-delete an invitation row
+ * (pending cancel + cleanup of accepted/canceled/expired history).
+ */
+export async function postDeleteInvitation(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (!session) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const orgId = session.session.activeOrganizationId;
+    if (!orgId) {
+      res.status(403).json({ error: "No active organization", code: "NO_ORG" });
+      return;
+    }
+    const prisma = getPrisma();
+    if (!prisma) {
+      res.status(503).json({ error: "Database unavailable" });
+      return;
+    }
+
+    const invitationId = String(req.body?.invitationId || "").trim();
+    if (!invitationId) {
+      res.status(400).json({ error: "invitationId is required" });
+      return;
+    }
+
+    const caller = await prisma.member.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: orgId,
+          userId: session.user.id,
+        },
+      },
+    });
+    const role = String(caller?.role || "").toLowerCase();
+    if (!caller || (role !== "owner" && role !== "admin")) {
+      res
+        .status(403)
+        .json({ error: "Only owners or admins can delete invitations" });
+      return;
+    }
+
+    const invite = await prisma.invitation.findUnique({
+      where: { id: invitationId },
+    });
+    if (!invite || invite.organizationId !== orgId) {
+      res.status(404).json({ error: "Invitation not found" });
+      return;
+    }
+
+    await prisma.invitation.delete({ where: { id: invitationId } });
+    res.json({ ok: true, deletedInvitationId: invitationId });
+  } catch (e) {
+    next(e);
+  }
+}
+
+/**
  * POST /api/auth-app/accept-invite — link-based invitation accept.
  *
  * The email invite link is treated as the capability token: any signed-in user
