@@ -9,6 +9,7 @@ import {
   emitAppointmentDeleted,
   emitAppointmentUpdated,
 } from "../../realtime/io.js";
+import { upsertClientByPhone } from "../../lib/client-upsert.js";
 import { appointmentsService } from "./appointments.service.js";
 
 function salonIdOf(req: AuthedRequest) {
@@ -37,6 +38,7 @@ function parseRange(
 
 function parseCreateBody(body: Request["body"]): {
   clientName: string;
+  clientPhone: string | null;
   service: string;
   start: Date;
   end: Date;
@@ -54,6 +56,10 @@ function parseCreateBody(body: Request["body"]): {
   if (!clientName) {
     throw new HttpError(400, "clientName is required");
   }
+  const clientPhone =
+    typeof b.clientPhone === "string" && b.clientPhone.trim()
+      ? b.clientPhone.trim()
+      : null;
   const start = typeof b.start === "string" ? new Date(b.start) : null;
   const end = typeof b.end === "string" ? new Date(b.end) : null;
   if (!start || Number.isNaN(start.getTime()) || !end || Number.isNaN(end.getTime())) {
@@ -79,7 +85,7 @@ function parseCreateBody(body: Request["body"]): {
   const staffId =
     typeof b.staffId === "string" && b.staffId.trim() ? b.staffId.trim() : null;
 
-  return { clientName, service, start, end, color, price, notes, seriesId, staffId };
+  return { clientName, clientPhone, service, start, end, color, price, notes, seriesId, staffId };
 }
 
 function parsePatchBody(body: Request["body"]): {
@@ -168,11 +174,20 @@ export const appointmentsController = {
 
   create: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const input = parseCreateBody(req.body);
-    const appointment = await appointmentsService.create(input, salonIdOf(req));
+    const salonId = salonIdOf(req);
+    const appointment = await appointmentsService.create(input, salonId);
     if (appointment === null) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);
       return;
+    }
+    // Auto-create the client in the salon catalog (match by phone).
+    if (input.clientPhone) {
+      await upsertClientByPhone(salonId, {
+        name: input.clientName,
+        phone: input.clientPhone,
+        source: "Calendar",
+      });
     }
     emitAppointmentCreated({ appointment });
     res.status(201).json({ appointment });

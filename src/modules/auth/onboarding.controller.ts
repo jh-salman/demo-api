@@ -8,6 +8,7 @@ import {
   normalizeSlug,
   getTemplate,
 } from "../microsite/microsite.templates.js";
+import { DEFAULT_MICROSITE_THEME } from "../microsite/microsite.theme.js";
 import { salonToPublic } from "../microsite/microsite.service.js";
 
 async function createOrgAndSalon(opts: {
@@ -49,6 +50,7 @@ async function createOrgAndSalon(opts: {
       primaryHex: template.defaults.primaryHex,
       tagline: template.defaults.tagline,
       about: template.defaults.about,
+      theme: DEFAULT_MICROSITE_THEME,
       bookingHours: template.defaults.bookingHours,
       micrositeEnabled: true,
       phone: opts.userPhone || null,

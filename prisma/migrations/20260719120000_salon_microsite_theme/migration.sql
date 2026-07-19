@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Salon" ADD COLUMN IF NOT EXISTS "theme" JSONB NOT NULL DEFAULT '{}';

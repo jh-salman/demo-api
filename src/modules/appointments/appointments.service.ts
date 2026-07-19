@@ -58,6 +58,7 @@ export const appointmentsService = {
         data: {
           salonId: tenantId,
           clientName: input.clientName,
+          clientPhone: input.clientPhone ?? null,
           service: input.service,
           startAt: input.start,
           endAt: input.end,

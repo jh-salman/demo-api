@@ -10,6 +10,13 @@ import {
   type BookingHours,
   MICROSITE_TEMPLATES,
 } from "./microsite.templates.js";
+import {
+  DEFAULT_MICROSITE_THEME,
+  mergeMicrositeTheme,
+  normalizeMicrositeTheme,
+  type MicrositeTheme,
+} from "./microsite.theme.js";
+import { upsertClientByPhone } from "../../lib/client-upsert.js";
 
 const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
@@ -25,6 +32,7 @@ export type SalonPublicDto = {
   logoUrl: string | null;
   tagline: string | null;
   about: string | null;
+  theme: MicrositeTheme;
   bookingHours: BookingHours;
   micrositeEnabled: boolean;
 };
@@ -47,6 +55,7 @@ export function salonToPublic(row: Salon): SalonPublicDto {
     logoUrl: row.logoUrl,
     tagline: row.tagline,
     about: row.about,
+    theme: normalizeMicrositeTheme(row.theme),
     bookingHours: asBookingHours(row.bookingHours),
     micrositeEnabled: row.micrositeEnabled,
   };
@@ -152,6 +161,9 @@ export const micrositeService = {
     }
 
     const name = (input.name || slug).trim() || slug;
+    const theme = normalizeMicrositeTheme(
+      template.defaults.theme || DEFAULT_MICROSITE_THEME,
+    );
     const row = await prisma.salon.create({
       data: {
         organizationId: input.organizationId || null,
@@ -161,6 +173,7 @@ export const micrositeService = {
         primaryHex: template.defaults.primaryHex,
         tagline: template.defaults.tagline,
         about: template.defaults.about,
+        theme: theme as Prisma.InputJsonValue,
         bookingHours: template.defaults.bookingHours as Prisma.InputJsonValue,
         micrositeEnabled: true,
       },
@@ -177,6 +190,7 @@ export const micrositeService = {
       logoUrl?: string | null;
       tagline?: string | null;
       about?: string | null;
+      theme?: Partial<MicrositeTheme> | null;
       bookingHours?: BookingHours;
       micrositeEnabled?: boolean;
       timezone?: string;
@@ -186,6 +200,13 @@ export const micrositeService = {
     if (!prisma) throw new Error("DATABASE_URL not configured");
 
     const key = normalizeSlug(slug);
+    const existing = await prisma.salon.findUnique({ where: { slug: key } });
+    if (!existing) {
+      const err = new Error("Salon not found") as Error & { status: number };
+      err.status = 404;
+      throw err;
+    }
+
     const data: Prisma.SalonUpdateInput = {};
     if (patch.name !== undefined) data.name = patch.name.trim() || undefined;
     if (patch.phone !== undefined) data.phone = patch.phone;
@@ -193,6 +214,12 @@ export const micrositeService = {
     if (patch.logoUrl !== undefined) data.logoUrl = patch.logoUrl;
     if (patch.tagline !== undefined) data.tagline = patch.tagline;
     if (patch.about !== undefined) data.about = patch.about;
+    if (patch.theme !== undefined && patch.theme !== null) {
+      data.theme = mergeMicrositeTheme(
+        existing.theme,
+        patch.theme,
+      ) as Prisma.InputJsonValue;
+    }
     if (patch.bookingHours !== undefined) {
       data.bookingHours = patch.bookingHours as Prisma.InputJsonValue;
     }
@@ -201,14 +228,8 @@ export const micrositeService = {
     }
     if (patch.timezone !== undefined) data.timezone = patch.timezone;
 
-    try {
-      const row = await prisma.salon.update({ where: { slug: key }, data });
-      return salonToPublic(row);
-    } catch {
-      const err = new Error("Salon not found") as Error & { status: number };
-      err.status = 404;
-      throw err;
-    }
+    const row = await prisma.salon.update({ where: { slug: key }, data });
+    return salonToPublic(row);
   },
 
   async getServices(salonId?: string) {
@@ -384,6 +405,13 @@ export const micrositeService = {
         notes: `Booked via microsite · ${input.clientPhone.trim()}`,
         staffId,
       },
+    });
+
+    // Auto-create the client in the salon catalog (match by phone).
+    await upsertClientByPhone(input.salon.id, {
+      name: input.clientName,
+      phone: input.clientPhone,
+      source: "Microsite",
     });
 
     return {

@@ -138,6 +138,10 @@ export const micrositeController = {
             : typeof body.about === "string"
               ? body.about
               : undefined,
+        theme:
+          body.theme && typeof body.theme === "object" && !Array.isArray(body.theme)
+            ? (body.theme as never)
+            : undefined,
         bookingHours:
           body.bookingHours && typeof body.bookingHours === "object"
             ? (body.bookingHours as never)

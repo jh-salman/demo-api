@@ -31,6 +31,7 @@ export type MicrositeTemplate = {
     tagline: string;
     about: string;
     bookingHours: BookingHours;
+    theme?: Record<string, unknown>;
   };
 };
 
