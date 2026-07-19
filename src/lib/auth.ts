@@ -3,7 +3,8 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { organization, phoneNumber } from "better-auth/plugins";
 import { getPrisma } from "./prisma.js";
 import { sendInviteEmail } from "./invite-email.js";
-import { isValidUsPhone, normalizeUsPhoneE164 } from "./us-phone.js";
+import { sendSentDmText, sentDmConfigured } from "./sentdm.js";
+import { isValidPhone, normalizePhoneE164 } from "./us-phone.js";
 
 function webOrigin(): string {
   return (
@@ -87,16 +88,22 @@ export const auth = betterAuth({
       otpLength: 6,
       expiresIn: 300,
       allowedAttempts: 5,
-      phoneNumberValidator: (phone) => isValidUsPhone(phone),
-      sendOTP: ({ phoneNumber: phone, code }) => {
-        const e164 = normalizeUsPhoneE164(phone) || phone;
+      phoneNumberValidator: (phone) => isValidPhone(phone),
+      sendOTP: async ({ phoneNumber: phone, code }) => {
+        const e164 = normalizePhoneE164(phone) || phone;
         if (otpMockEnabled()) {
           console.log(
             `[AUTH_OTP_MOCK] ${e164} → enter ${mockOtpCode()} (server also generated ${code})`,
           );
           return;
         }
-        // Later: Salesmsg. Until then log generated code for manual tests.
+        if (sentDmConfigured()) {
+          const text = `Your Salon X verification code is ${code}. It expires in 5 minutes.`;
+          await sendSentDmText(e164, text);
+          console.log(`[AUTH_OTP] sent.dm → ${e164}`);
+          return;
+        }
+        // No SMS provider configured — log generated code for manual tests.
         console.warn(`[AUTH_OTP] ${e164} → ${code}`);
       },
       ...(otpMockEnabled()
@@ -107,11 +114,11 @@ export const auth = betterAuth({
         : {}),
       signUpOnVerification: {
         getTempEmail: (phone) => {
-          const e164 = normalizeUsPhoneE164(phone) || phone;
+          const e164 = normalizePhoneE164(phone) || phone;
           const local = e164.replace(/\D/g, "");
           return `u${local}@users.salonx.local`;
         },
-        getTempName: (phone) => normalizeUsPhoneE164(phone) || phone,
+        getTempName: (phone) => normalizePhoneE164(phone) || phone,
       },
     }),
     organization({

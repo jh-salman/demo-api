@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getPrisma } from "./prisma.js";
-import { digitsOnlyPhone, normalizeUsPhoneE164 } from "./us-phone.js";
+import { digitsOnlyPhone, normalizePhoneE164 } from "./us-phone.js";
 import { clientsService } from "../modules/clients/clients.service.js";
 import { emitClientsCatalogUpdated } from "../realtime/io.js";
 
@@ -14,7 +14,7 @@ function phoneMatches(rowPhone: unknown, targetDigits: string, targetE164: strin
   const rowDigits = digitsOnlyPhone(String(rowPhone || ""));
   if (!rowDigits) return false;
   if (targetE164) {
-    const rowE164 = normalizeUsPhoneE164(String(rowPhone || ""));
+    const rowE164 = normalizePhoneE164(String(rowPhone || ""));
     if (rowE164 && rowE164 === targetE164) return true;
   }
   return rowDigits === targetDigits;
@@ -35,7 +35,7 @@ export async function upsertClientByPhone(
 
   const targetDigits = digitsOnlyPhone(input.phone);
   if (!targetDigits) return { created: false, client: null };
-  const targetE164 = normalizeUsPhoneE164(input.phone);
+  const targetE164 = normalizePhoneE164(input.phone);
 
   try {
     const current = await clientsService.get(salonId);
