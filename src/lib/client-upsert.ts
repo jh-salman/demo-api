@@ -28,7 +28,7 @@ function phoneMatches(rowPhone: unknown, targetDigits: string, targetE164: strin
  */
 export async function upsertClientByPhone(
   salonId: string,
-  input: { name: string; phone: string; source?: string },
+  input: { name: string; phone: string; email?: string; source?: string },
 ): Promise<{ created: boolean; client: ClientRow | null }> {
   const prisma = getPrisma();
   if (!prisma) return { created: false, client: null };
@@ -48,7 +48,7 @@ export async function upsertClientByPhone(
       id: `c-${randomUUID().slice(0, 8)}`,
       name: input.name.trim() || "Client",
       phone: targetE164 || input.phone.trim(),
-      email: "",
+      email: input.email?.trim() || "",
       notes: "",
       source: input.source || "Microsite",
       createdAt: new Date().toISOString(),

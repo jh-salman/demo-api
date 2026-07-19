@@ -247,6 +247,14 @@ export const micrositeController = {
         salon,
         clientName,
         clientPhone,
+        clientEmail:
+          typeof body.clientEmail === "string" && body.clientEmail.trim()
+            ? body.clientEmail.trim()
+            : null,
+        notes:
+          typeof body.notes === "string" && body.notes.trim()
+            ? body.notes.trim()
+            : null,
         serviceId:
           typeof body.serviceId === "string" ? body.serviceId : undefined,
         staffId:

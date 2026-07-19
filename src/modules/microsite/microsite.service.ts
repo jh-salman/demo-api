@@ -336,6 +336,8 @@ export const micrositeService = {
     salon: SalonPublicDto;
     clientName: string;
     clientPhone: string;
+    clientEmail?: string | null;
+    notes?: string | null;
     serviceId?: string;
     staffId?: string | null;
     start: Date;
@@ -378,6 +380,11 @@ export const micrositeService = {
 
     const staffId = input.staffId?.trim() || null;
 
+    const clientNote =
+      typeof input.notes === "string" && input.notes.trim()
+        ? ` · ${input.notes.trim()}`
+        : "";
+
     const conflict = await prisma.salonxAppointment.findFirst({
       where: {
         salonId: input.salon.id,
@@ -402,7 +409,7 @@ export const micrositeService = {
         endAt: input.end,
         color,
         price,
-        notes: `Booked via microsite · ${input.clientPhone.trim()}`,
+        notes: `Booked via microsite · ${input.clientPhone.trim()}${clientNote}`,
         staffId,
       },
     });
@@ -411,6 +418,7 @@ export const micrositeService = {
     await upsertClientByPhone(input.salon.id, {
       name: input.clientName,
       phone: input.clientPhone,
+      email: input.clientEmail?.trim() || undefined,
       source: "Microsite",
     });
 
