@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { micrositeController } from "./microsite.controller.js";
+import { waitlistController } from "../waitlist/waitlist.controller.js";
 import { requireSession } from "../../middleware/auth.middleware.js";
 
 export const micrositeRouter = Router();
@@ -28,5 +29,13 @@ micrositeRouter.get(
 micrositeRouter.get(
   "/public/salons/:slug/availability",
   micrositeController.getAvailability,
+);
+micrositeRouter.post(
+  "/public/salons/:slug/smart-availability",
+  micrositeController.smartAvailability,
+);
+micrositeRouter.post(
+  "/public/salons/:slug/waitlist",
+  waitlistController.joinPublic,
 );
 micrositeRouter.post("/public/salons/:slug/book", micrositeController.book);

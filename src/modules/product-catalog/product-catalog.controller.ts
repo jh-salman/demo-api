@@ -6,6 +6,9 @@ import { LEGACY_SALON_ID } from "../../lib/tenant.js";
 import type { AuthedRequest } from "../../middleware/auth.middleware.js";
 import { productCatalogService } from "./product-catalog.service.js";
 import { emitProductCatalogUpdated } from "../../realtime/io.js";
+import { createCatalogCache } from "../../lib/catalog-cache.js";
+
+const productCache = createCatalogCache("product:v2");
 
 function salonIdOf(req: AuthedRequest) {
   return req.salonId || LEGACY_SALON_ID;
@@ -13,7 +16,12 @@ function salonIdOf(req: AuthedRequest) {
 
 export const productCatalogController = {
   get: asyncHandler(async (req: AuthedRequest, res: Response) => {
-    res.json(await productCatalogService.get(salonIdOf(req)));
+    const salonId = salonIdOf(req);
+    res.json(
+      await productCache.cachedGet(salonId, () =>
+        productCatalogService.get(salonId),
+      ),
+    );
   }),
 
   put: asyncHandler(async (req: AuthedRequest, res: Response) => {
@@ -29,6 +37,7 @@ export const productCatalogController = {
         typeof b.expectedUpdatedAt === "string" ? b.expectedUpdatedAt : null,
         salonId,
       );
+      await productCache.invalidate(salonId);
       emitProductCatalogUpdated(next);
       res.json(next);
     } catch (e) {

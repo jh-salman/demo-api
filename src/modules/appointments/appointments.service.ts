@@ -99,6 +99,8 @@ export const appointmentsService = {
       notes?: string;
       seriesId?: string | null;
       staffId?: string | null;
+      referenceImageUrl?: string | null;
+      referenceImageReviewedAt?: Date | null;
     },
     salonId?: string,
   ) {
@@ -138,5 +140,32 @@ export const appointmentsService = {
       if (isTransientPrismaDbError(e)) notePrismaDbFailure(e);
       return false;
     }
+  },
+
+  /**
+   * Upcoming appointments that carry an unreviewed client reference image.
+   * Powers the stylist login popup (#11). Optionally filters by staffId.
+   */
+  async pendingReferenceReviews(
+    salonId: string = LEGACY_SALON_ID,
+    staffId?: string | null,
+  ) {
+    const tenantId = salonId || LEGACY_SALON_ID;
+    return withAppointmentsDb(async () => {
+      const prisma = getPrismaOrNull();
+      if (!prisma) return null;
+      const rows = await prisma.salonxAppointment.findMany({
+        where: {
+          salonId: tenantId,
+          referenceImageUrl: { not: null },
+          referenceImageReviewedAt: null,
+          endAt: { gte: new Date() },
+          ...(staffId ? { staffId } : {}),
+        },
+        orderBy: { startAt: "asc" },
+        take: 50,
+      });
+      return rows.map(toDto);
+    });
   },
 };

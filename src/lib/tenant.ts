@@ -1,5 +1,6 @@
 import type { Salon } from "@prisma/client";
 import { getPrisma } from "./prisma.js";
+import { getIoRedis } from "./ioredis.js";
 
 /** Legacy single-tenant row id used before org scoping. */
 export const LEGACY_SALON_ID = "default";
@@ -8,6 +9,56 @@ export type SessionLike = {
   user?: { id?: string | null } | null;
   session: { activeOrganizationId?: string | null };
 };
+
+/**
+ * Per-org salon lookup cached in Redis. An org's salon id is stable, so this
+ * removes a DB round-trip from every authenticated organization/staff request.
+ * Cache is busted on salon create/update via `invalidateSalonCache`.
+ *
+ * Note: consumers only read `salon.id` / `salon.organizationId` (both strings),
+ * so JSON round-tripping Date fields is safe here.
+ */
+const SALON_NS = "salonx:tenant:orgsalon:";
+const SALON_TTL_SECONDS = 600;
+
+async function salonByOrg(orgId: string): Promise<Salon | null> {
+  const prisma = getPrisma();
+  if (!prisma) return null;
+  const redis = getIoRedis();
+  if (redis) {
+    try {
+      const hit = await redis.get(SALON_NS + orgId);
+      if (hit) return JSON.parse(hit) as Salon;
+    } catch {
+      /* fall through to DB */
+    }
+  }
+  const salon = await prisma.salon.findUnique({
+    where: { organizationId: orgId },
+  });
+  if (salon && redis) {
+    try {
+      await redis.set(SALON_NS + orgId, JSON.stringify(salon), "EX", SALON_TTL_SECONDS);
+    } catch {
+      /* best effort */
+    }
+  }
+  return salon;
+}
+
+/** Drop the cached salon for an org after a salon create/update. */
+export async function invalidateSalonCache(
+  orgId: string | null | undefined,
+): Promise<void> {
+  if (!orgId) return;
+  const redis = getIoRedis();
+  if (!redis) return;
+  try {
+    await redis.del(SALON_NS + orgId);
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * Resolve Salon for the session.
@@ -24,9 +75,7 @@ export async function resolveActiveSalon(
 
   const orgId = session?.session?.activeOrganizationId;
   if (orgId) {
-    const active = await prisma.salon.findUnique({
-      where: { organizationId: orgId },
-    });
+    const active = await salonByOrg(orgId);
     if (active) return active;
   }
 
@@ -39,9 +88,7 @@ export async function resolveActiveSalon(
     select: { organizationId: true },
   });
   for (const m of memberships) {
-    const salon = await prisma.salon.findUnique({
-      where: { organizationId: m.organizationId },
-    });
+    const salon = await salonByOrg(m.organizationId);
     if (salon) return salon;
   }
   return null;

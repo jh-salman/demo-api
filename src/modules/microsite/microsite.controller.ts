@@ -220,6 +220,49 @@ export const micrositeController = {
     }
   }),
 
+  smartAvailability: asyncHandler(async (req: Request, res: Response) => {
+    if (!getPrisma()) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    const salon = await requirePublicSalon(String(req.params.slug || ""));
+    const body = (req.body || {}) as Record<string, unknown>;
+    const windowRaw = String(body.window || "").toLowerCase();
+    if (
+      windowRaw !== "morning" &&
+      windowRaw !== "afternoon" &&
+      windowRaw !== "evening"
+    ) {
+      throw new HttpError(400, "window must be morning|afternoon|evening");
+    }
+    const dates = Array.isArray(body.dates)
+      ? body.dates.filter(
+          (d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d),
+        )
+      : [];
+    if (!dates.length) throw new HttpError(400, "dates[] required (YYYY-MM-DD)");
+    try {
+      const result = await micrositeService.smartAvailability({
+        salon,
+        dates: dates.slice(0, 14),
+        window: windowRaw,
+        serviceId:
+          typeof body.serviceId === "string" ? body.serviceId : undefined,
+        staffId:
+          typeof body.staffId === "string" && body.staffId.trim()
+            ? body.staffId.trim()
+            : null,
+      });
+      res.json(result);
+    } catch (e) {
+      throw new HttpError(
+        statusFromErr(e),
+        e instanceof Error ? e.message : "Smart availability failed",
+      );
+    }
+  }),
+
   book: asyncHandler(async (req: Request, res: Response) => {
     if (!getPrisma()) {
       const u = prismaUnavailableResponse();
@@ -263,6 +306,11 @@ export const micrositeController = {
             : null,
         start,
         end,
+        referenceImageUrl:
+          typeof body.referenceImageUrl === "string" &&
+          body.referenceImageUrl.trim()
+            ? body.referenceImageUrl.trim()
+            : null,
       });
 
       // Calendar DTO shape for realtime consumers
@@ -278,6 +326,8 @@ export const micrositeController = {
           notes: `Booked via microsite · ${appointment.clientPhone}`,
           seriesId: null,
           staffId: appointment.staffId,
+          referenceImageUrl: appointment.referenceImageUrl || null,
+          referenceImageReviewedAt: appointment.referenceImageReviewedAt || null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },

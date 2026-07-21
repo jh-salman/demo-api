@@ -10,6 +10,8 @@ import {
 } from "../microsite/microsite.templates.js";
 import { DEFAULT_MICROSITE_THEME } from "../microsite/microsite.theme.js";
 import { salonToPublic } from "../microsite/microsite.service.js";
+import { ensureStaffCatalogForMember } from "../../lib/staff-catalog.js";
+import { invalidateSalonCache } from "../../lib/tenant.js";
 
 async function createOrgAndSalon(opts: {
   headers: Headers;
@@ -56,6 +58,7 @@ async function createOrgAndSalon(opts: {
       phone: opts.userPhone || null,
     },
   });
+  await invalidateSalonCache(salon.organizationId);
 
   await seedSalonCatalogs(salon.id);
 
@@ -699,6 +702,19 @@ export async function postAcceptInvite(
     const salon = await prisma.salon.findUnique({
       where: { organizationId: invite.organizationId },
     });
+
+    if (salon?.id) {
+      const displayName =
+        (typeof session.user.name === "string" && session.user.name.trim()) ||
+        (typeof session.user.phoneNumber === "string" &&
+          session.user.phoneNumber) ||
+        "Team member";
+      await ensureStaffCatalogForMember({
+        salonId: salon.id,
+        userId,
+        name: displayName,
+      });
+    }
 
     res.json({
       ok: true,

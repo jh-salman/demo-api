@@ -14,6 +14,11 @@ export const env = {
   /** Upstash Redis REST (redis.io) — optional; GET /api/clients cache when set. */
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL?.trim() ?? "",
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ?? "",
+  /**
+   * Redis TCP URL for ioredis (pub/sub) — powers the Socket.IO Redis adapter so
+   * realtime emits reach every instance. Use `rediss://` for TLS (Upstash).
+   */
+  REDIS_URL: process.env.REDIS_URL?.trim() ?? "",
   /** OpenAI — optional; RAMP AI routes when set. */
   OPENAI_API_KEY: process.env.OPENAI_API_KEY?.trim() ?? "",
   /** GET /api/clients cache TTL in seconds (default 60). */

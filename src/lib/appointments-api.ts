@@ -14,6 +14,8 @@ export type AppointmentDto = {
   seriesId: string | null;
   staffId: string | null;
   salonId: string;
+  referenceImageUrl: string | null;
+  referenceImageReviewedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -39,6 +41,10 @@ export function toDto(row: SalonxAppointment): AppointmentDto {
     seriesId: row.seriesId,
     staffId: row.staffId,
     salonId: row.salonId,
+    referenceImageUrl: row.referenceImageUrl ?? null,
+    referenceImageReviewedAt: row.referenceImageReviewedAt
+      ? row.referenceImageReviewedAt.toISOString()
+      : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

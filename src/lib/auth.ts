@@ -2,8 +2,9 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { organization, phoneNumber } from "better-auth/plugins";
 import { getPrisma } from "./prisma.js";
+import { getIoRedis } from "./ioredis.js";
 import { sendInviteEmail } from "./invite-email.js";
-import { sendSentDmText, sentDmConfigured } from "./sentdm.js";
+import { sendSentDmOtp, sentDmConfigured } from "./sentdm.js";
 import { isValidPhone, normalizePhoneE164 } from "./us-phone.js";
 
 function webOrigin(): string {
@@ -53,8 +54,54 @@ const cookieSameSite =
     | "none"
     | undefined) || (isProd ? "none" : "lax");
 
+/**
+ * Redis-backed session store. When REDIS_URL is set, Better Auth keeps sessions
+ * (and OTP / verification + rate-limit state) in Redis instead of the DB, so
+ * every getSession() — auth, organization, staff, microsite — is a fast Redis
+ * read. User / org / member records still live in Postgres.
+ */
+const authRedis = getIoRedis();
+const SESSION_NS = "salonx:auth:";
+
+const secondaryStorage = authRedis
+  ? {
+      get: async (key: string): Promise<string | null> => {
+        try {
+          return (await authRedis.get(SESSION_NS + key)) ?? null;
+        } catch {
+          return null;
+        }
+      },
+      set: async (key: string, value: string, ttl?: number): Promise<void> => {
+        try {
+          if (typeof ttl === "number" && ttl > 0) {
+            await authRedis.set(SESSION_NS + key, value, "EX", ttl);
+          } else {
+            await authRedis.set(SESSION_NS + key, value);
+          }
+        } catch {
+          /* best effort — auth still works via DB fallback */
+        }
+      },
+      delete: async (key: string): Promise<void> => {
+        try {
+          await authRedis.del(SESSION_NS + key);
+        } catch {
+          /* ignore */
+        }
+      },
+    }
+  : undefined;
+
+if (secondaryStorage) {
+  console.log("[auth] Session store: Redis (secondaryStorage) ON");
+} else {
+  console.log("[auth] Session store: Postgres (set REDIS_URL for Redis sessions)");
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
+  ...(secondaryStorage ? { secondaryStorage } : {}),
   secret: process.env.BETTER_AUTH_SECRET || "dev-only-change-me",
   baseURL: authBaseUrl(),
   trustedOrigins: [
@@ -98,9 +145,8 @@ export const auth = betterAuth({
           return;
         }
         if (sentDmConfigured()) {
-          const text = `Your Salon X verification code is ${code}. It expires in 5 minutes.`;
-          await sendSentDmText(e164, text);
-          console.log(`[AUTH_OTP] sent.dm → ${e164}`);
+          await sendSentDmOtp(e164, code);
+          console.log(`[AUTH_OTP] sent.dm OTP → ${e164}`);
           return;
         }
         // No SMS provider configured — log generated code for manual tests.

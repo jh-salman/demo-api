@@ -46,25 +46,67 @@ model Salon {
 
 /// Calendar appointments (`/api/appointments`).
 model SalonxAppointment {
-  id          String   @id @default(cuid())
-  salonId     String   @default("default")
-  clientName  String
-  clientPhone String?
-  service     String   @default("")
-  startAt     DateTime
-  endAt       DateTime
-  color       String   @default("#3b82f6")
-  price       Float    @default(0)
-  notes       String   @default("")
-  seriesId    String?
-  staffId     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                        String    @id @default(cuid())
+  salonId                   String    @default("default")
+  clientName                String
+  clientPhone               String?
+  service                   String    @default("")
+  startAt                   DateTime
+  endAt                     DateTime
+  color                     String    @default("#3b82f6")
+  price                     Float     @default(0)
+  notes                     String    @default("")
+  seriesId                  String?
+  staffId                   String?
+  /// Optional client reference image from microsite booking (Cloudinary URL).
+  referenceImageUrl         String?
+  /// Cleared when stylist opens / marks reviewed (glass badge gate).
+  referenceImageReviewedAt  DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   @@index([startAt])
   @@index([endAt])
   @@index([staffId])
   @@index([salonId, startAt])
+}
+
+/// Staff → client messages tied to an appointment (SMS via sent.dm).
+model SalonxClientMessage {
+  id            String   @id @default(cuid())
+  salonId       String
+  appointmentId String?
+  clientPhone   String
+  body          String
+  channel       String   @default("sms")
+  /// queued | sent | failed
+  status        String   @default("queued")
+  providerId    String?
+  error         String?
+  createdAt     DateTime @default(now())
+
+  @@index([salonId, createdAt])
+  @@index([appointmentId])
+}
+
+/// Public microsite waitlist — capture when no suitable slot (manual owner follow-up).
+model SalonxWaitlistEntry {
+  id               String   @id @default(cuid())
+  salonId          String
+  clientName       String
+  clientPhone      String
+  serviceId        String?
+  staffId          String?
+  preferredDates   Json     @default("[]")
+  preferredWindow  String?
+  notes            String   @default("")
+  /// open | booked | dismissed
+  status           String   @default("open")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([salonId, status, createdAt])
+  @@index([salonId, createdAt])
 }
 
 /// Parked + waitlist toolbar rows for salonx-web-v2 (`/api/calendar-toolbar`).

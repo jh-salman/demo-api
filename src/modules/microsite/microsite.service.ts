@@ -17,6 +17,12 @@ import {
   type MicrositeTheme,
 } from "./microsite.theme.js";
 import { upsertClientByPhone } from "../../lib/client-upsert.js";
+import { effectiveStaffWindows } from "../../lib/staff-schedule.js";
+import { invalidateSalonCache } from "../../lib/tenant.js";
+import {
+  clientConsultationService,
+  normalizeClientKey,
+} from "../client-consultation/client-consultation.service.js";
 
 const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
@@ -178,6 +184,7 @@ export const micrositeService = {
         micrositeEnabled: true,
       },
     });
+    await invalidateSalonCache(row.organizationId);
     return salonToPublic(row);
   },
 
@@ -229,6 +236,7 @@ export const micrositeService = {
     if (patch.timezone !== undefined) data.timezone = patch.timezone;
 
     const row = await prisma.salon.update({ where: { slug: key }, data });
+    await invalidateSalonCache(row.organizationId);
     return salonToPublic(row);
   },
 
@@ -273,17 +281,26 @@ export const micrositeService = {
     const duration = service ? serviceDurationMinutes(service) : 60;
     const step = input.slotMinutes && input.slotMinutes > 0 ? input.slotMinutes : 15;
 
-    const staffList = (await this.getStaff(input.salon.id)) as {
-      id?: string;
-      name?: string;
-    }[];
-    const staffIds = input.staffId
-      ? [input.staffId]
-      : staffList.map((s) => s.id).filter((id): id is string => Boolean(id));
+    const staffList = (await this.getStaff(input.salon.id)) as Array<
+      Record<string, unknown> & { id?: string; name?: string }
+    >;
 
-    if (!staffIds.length) {
+    type StaffEntry = {
+      id: string | null;
+      staff: (typeof staffList)[number] | null;
+    };
+    let entries: StaffEntry[];
+    if (input.staffId) {
+      const found =
+        staffList.find((s) => String(s.id) === input.staffId) || null;
+      entries = [{ id: input.staffId, staff: found }];
+    } else if (staffList.length) {
+      entries = staffList
+        .filter((s) => Boolean(s.id))
+        .map((s) => ({ id: String(s.id), staff: s }));
+    } else {
       // Allow unassigned booking slots
-      staffIds.push("__any__");
+      entries = [{ id: null, staff: null }];
     }
 
     const dayStart = new Date(`${input.date}T00:00:00`);
@@ -300,9 +317,17 @@ export const micrositeService = {
     const now = Date.now();
     const slots: { start: string; end: string; staffId: string | null }[] = [];
 
-    for (const staffId of staffIds) {
-      const sid = staffId === "__any__" ? null : staffId;
-      for (const win of windows) {
+    for (const entry of entries) {
+      const sid = entry.id;
+      // (salon window ∩ stylist working hours) − stylist breaks/lunch.
+      const staffWindows = entry.staff
+        ? effectiveStaffWindows(
+            windows,
+            entry.staff as { workingHours?: unknown; breaks?: unknown },
+            dayKey,
+          )
+        : windows;
+      for (const win of staffWindows) {
         const startM = parseHm(win.start);
         const endM = parseHm(win.end);
         if (startM == null || endM == null || endM <= startM) continue;
@@ -332,6 +357,61 @@ export const micrositeService = {
     return { slots, date: input.date, dayKey, durationMinutes: duration };
   },
 
+  /**
+   * Earliest open slot across dates within a part-of-day window.
+   * morning 00–12 · afternoon 12–17 · evening 17–24 (local salon day clock).
+   */
+  async smartAvailability(input: {
+    salon: SalonPublicDto;
+    dates: string[];
+    window: "morning" | "afternoon" | "evening";
+    serviceId?: string;
+    staffId?: string | null;
+  }) {
+    const ranges = {
+      morning: [0, 12 * 60],
+      afternoon: [12 * 60, 17 * 60],
+      evening: [17 * 60, 24 * 60],
+    } as const;
+    const [winStart, winEnd] = ranges[input.window];
+
+    let earliest: {
+      start: string;
+      end: string;
+      staffId: string | null;
+      date: string;
+    } | null = null;
+
+    for (const date of input.dates) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const day = await this.availability({
+        salon: input.salon,
+        date,
+        serviceId: input.serviceId,
+        staffId: input.staffId,
+      });
+      for (const slot of day.slots || []) {
+        const t = new Date(slot.start);
+        const mins = t.getHours() * 60 + t.getMinutes();
+        if (mins < winStart || mins >= winEnd) continue;
+        if (!earliest || slot.start < earliest.start) {
+          earliest = {
+            start: slot.start,
+            end: slot.end,
+            staffId: slot.staffId,
+            date,
+          };
+        }
+      }
+    }
+
+    return {
+      window: input.window,
+      dates: input.dates,
+      slot: earliest,
+    };
+  },
+
   async book(input: {
     salon: SalonPublicDto;
     clientName: string;
@@ -342,6 +422,7 @@ export const micrositeService = {
     staffId?: string | null;
     start: Date;
     end: Date;
+    referenceImageUrl?: string | null;
   }) {
     const prisma = getPrisma();
     if (!prisma) throw new Error("DATABASE_URL not configured");
@@ -399,6 +480,12 @@ export const micrositeService = {
       throw err;
     }
 
+    const refUrl =
+      typeof input.referenceImageUrl === "string" &&
+      input.referenceImageUrl.trim().startsWith("http")
+        ? input.referenceImageUrl.trim()
+        : null;
+
     const row = await prisma.salonxAppointment.create({
       data: {
         salonId: input.salon.id,
@@ -411,6 +498,8 @@ export const micrositeService = {
         price,
         notes: `Booked via microsite · ${input.clientPhone.trim()}${clientNote}`,
         staffId,
+        referenceImageUrl: refUrl,
+        referenceImageReviewedAt: null,
       },
     });
 
@@ -421,6 +510,41 @@ export const micrositeService = {
       email: input.clientEmail?.trim() || undefined,
       source: "Microsite",
     });
+
+    // Link reference image into consultation LOOK photos (best-effort).
+    if (refUrl) {
+      try {
+        const clientKey = normalizeClientKey(input.clientName);
+        if (clientKey) {
+          const existing = await clientConsultationService.get(
+            clientKey,
+            input.salon.id,
+          );
+          const payload =
+            existing.record && typeof existing.record === "object"
+              ? { ...(existing.record as Record<string, unknown>) }
+              : {};
+          const photos = Array.isArray(payload.photos) ? [...payload.photos] : [];
+          photos.push({
+            url: refUrl,
+            label: "Client reference",
+            source: "microsite_booking",
+            appointmentId: row.id,
+            createdAt: new Date().toISOString(),
+          });
+          payload.photos = photos;
+          payload.needsReferenceReview = true;
+          await clientConsultationService.put(
+            clientKey,
+            payload,
+            (existing as { updatedAt?: string }).updatedAt ?? null,
+            input.salon.id,
+          );
+        }
+      } catch {
+        /* booking must not fail */
+      }
+    }
 
     return {
       id: row.id,
@@ -433,6 +557,10 @@ export const micrositeService = {
       salonId: row.salonId,
       color: row.color,
       price: row.price,
+      referenceImageUrl: row.referenceImageUrl,
+      referenceImageReviewedAt: row.referenceImageReviewedAt
+        ? row.referenceImageReviewedAt.toISOString()
+        : null,
     };
   },
 };

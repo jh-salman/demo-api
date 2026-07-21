@@ -15,6 +15,7 @@ import { appointmentVisitRouter } from "../modules/appointment-visit/appointment
 import { productCatalogRouter } from "../modules/product-catalog/product-catalog.routes.js";
 import { rampRouter } from "../modules/ramp/ramp.routes.js";
 import { micrositeRouter } from "../modules/microsite/microsite.routes.js";
+import { waitlistRouter } from "../modules/waitlist/waitlist.routes.js";
 import { authAppRouter } from "../modules/auth/onboarding.routes.js";
 
 export function registerRoutes(app: Express) {
@@ -35,6 +36,7 @@ export function registerRoutes(app: Express) {
   app.use("/api/client-consultation", clientConsultationRouter);
   app.use("/api/appointment-visit", appointmentVisitRouter);
   app.use("/api/appointments", appointmentsRouter);
+  app.use("/api/waitlist", waitlistRouter);
   app.use("/api/ramp", rampRouter);
   app.use("/api/microsite", micrositeRouter);
 }

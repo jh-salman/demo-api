@@ -10,6 +10,10 @@ import {
   emitAppointmentUpdated,
 } from "../../realtime/io.js";
 import { upsertClientByPhone } from "../../lib/client-upsert.js";
+import {
+  listClientMessages,
+  sendClientMessage,
+} from "../../lib/client-message.js";
 import { appointmentsService } from "./appointments.service.js";
 
 function salonIdOf(req: AuthedRequest) {
@@ -113,6 +117,8 @@ function parsePatchBody(body: Request["body"]): {
     notes?: string;
     seriesId?: string | null;
     staffId?: string | null;
+    referenceImageUrl?: string | null;
+    referenceImageReviewedAt?: Date | null;
   } = {};
 
   if (typeof b.clientName === "string") {
@@ -142,6 +148,17 @@ function parsePatchBody(body: Request["body"]): {
   else if (typeof b.seriesId === "string") data.seriesId = b.seriesId.trim() || null;
   if (b.staffId === null) data.staffId = null;
   else if (typeof b.staffId === "string") data.staffId = b.staffId.trim() || null;
+  if (b.referenceImageUrl === null) data.referenceImageUrl = null;
+  else if (typeof b.referenceImageUrl === "string") {
+    data.referenceImageUrl = b.referenceImageUrl.trim() || null;
+  }
+  if (b.referenceImageReviewedAt === null) data.referenceImageReviewedAt = null;
+  else if (b.referenceImageReviewedAt === true || b.markReferenceReviewed === true) {
+    data.referenceImageReviewedAt = new Date();
+  } else if (typeof b.referenceImageReviewedAt === "string") {
+    const d = new Date(b.referenceImageReviewedAt);
+    if (!Number.isNaN(d.getTime())) data.referenceImageReviewedAt = d;
+  }
 
   if (Object.keys(data).length === 0) {
     throw new HttpError(400, "No fields to update");
@@ -227,6 +244,79 @@ export const appointmentsController = {
     }
     emitAppointmentUpdated({ appointment });
     res.json({ appointment });
+  }),
+
+  pendingReferenceReviews: asyncHandler(
+    async (req: AuthedRequest, res: Response) => {
+      const staffId =
+        typeof req.query.staffId === "string" && req.query.staffId.trim()
+          ? req.query.staffId.trim()
+          : null;
+      const list = await appointmentsService.pendingReferenceReviews(
+        salonIdOf(req),
+        staffId,
+      );
+      if (list === null) {
+        const u = prismaUnavailableResponse();
+        res.status(u.status).json(u.body);
+        return;
+      }
+      res.json({ appointments: list });
+    },
+  ),
+
+  listMessages: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const appointmentId = req.params.id as string;
+    const list = await listClientMessages(salonIdOf(req), appointmentId);
+    if (list === null) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    res.json({ messages: list });
+  }),
+
+  sendMessage: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const appointmentId = req.params.id as string;
+    const salonId = salonIdOf(req);
+    const apt = await appointmentsService.getById(appointmentId, salonId);
+    if (apt === undefined) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    if (apt === null) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const body =
+      req.body && typeof req.body === "object"
+        ? (req.body as Record<string, unknown>)
+        : {};
+    const text = typeof body.body === "string" ? body.body.trim() : "";
+    if (!text) throw new HttpError(400, "body (message text) is required");
+    const phone =
+      (typeof body.clientPhone === "string" && body.clientPhone.trim()) ||
+      apt.clientPhone ||
+      "";
+    if (!phone) {
+      throw new HttpError(
+        400,
+        "No client phone on this appointment — pass clientPhone",
+      );
+    }
+    const message = await sendClientMessage({
+      salonId,
+      appointmentId,
+      clientPhone: phone,
+      body: text,
+    });
+    if (message === null) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    res.status(201).json({ message });
   }),
 
   remove: asyncHandler(async (req: AuthedRequest, res: Response) => {
