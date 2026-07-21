@@ -38,7 +38,7 @@ export const serviceCatalogController = {
         salonId,
       );
       await serviceCache.invalidate(salonId);
-      emitServiceCatalogUpdated(next);
+      emitServiceCatalogUpdated(salonId, next);
       res.json(next);
     } catch (e) {
       if (e instanceof JsonRowConflictError) {

@@ -36,7 +36,7 @@ export const clientConsultationController = {
         typeof b.expectedUpdatedAt === "string" ? b.expectedUpdatedAt : null,
         salonIdOf(req),
       );
-      emitConsultationUpdated(next);
+      emitConsultationUpdated(salonIdOf(req), next);
       res.json(next);
     } catch (e) {
       if (e instanceof JsonPayloadConflictError) {

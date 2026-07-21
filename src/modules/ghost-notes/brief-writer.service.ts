@@ -30,7 +30,7 @@ export async function markGhostBriefGenerating(
     ctx.updatedAt,
     job.salonId,
   );
-  emitConsultationUpdated({
+  emitConsultationUpdated(job.salonId, {
     stored: saved.stored,
     clientKey: key,
     record: saved.record,
@@ -63,7 +63,7 @@ export async function writeGhostBrief(
     ctx.updatedAt,
     job.salonId,
   );
-  emitConsultationUpdated({
+  emitConsultationUpdated(job.salonId, {
     stored: saved.stored,
     clientKey: key,
     record: saved.record,

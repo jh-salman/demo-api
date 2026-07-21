@@ -1,18 +1,24 @@
-import type { Request, Response } from "express";
+import type { Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { HttpError } from "../../middleware/error.middleware.js";
+import type { AuthedRequest } from "../../middleware/auth.middleware.js";
 import { JsonPayloadConflictError } from "../../lib/json-payload-store.js";
+import { LEGACY_SALON_ID } from "../../lib/tenant.js";
 import { appointmentVisitService } from "./appointment-visit.service.js";
 import { emitAppointmentVisitUpdated } from "../../realtime/io.js";
 
+function salonIdOf(req: AuthedRequest) {
+  return req.salonId || LEGACY_SALON_ID;
+}
+
 export const appointmentVisitController = {
-  get: asyncHandler(async (req: Request, res: Response) => {
+  get: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const appointmentId = String(req.params.appointmentId || "").trim();
     if (!appointmentId) throw new HttpError(400, "appointmentId required");
     res.json(await appointmentVisitService.get(appointmentId));
   }),
 
-  put: asyncHandler(async (req: Request, res: Response) => {
+  put: asyncHandler(async (req: AuthedRequest, res: Response) => {
     const appointmentId = String(req.params.appointmentId || "").trim();
     if (!appointmentId) throw new HttpError(400, "appointmentId required");
     const body = req.body;
@@ -26,7 +32,7 @@ export const appointmentVisitController = {
         b.visit,
         typeof b.expectedUpdatedAt === "string" ? b.expectedUpdatedAt : null,
       );
-      emitAppointmentVisitUpdated(next);
+      emitAppointmentVisitUpdated(salonIdOf(req), next);
       res.json(next);
     } catch (e) {
       if (e instanceof JsonPayloadConflictError) {

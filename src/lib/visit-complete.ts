@@ -126,7 +126,7 @@ export async function archiveVisitToConsultation(
     salonId,
   );
 
-  emitConsultationUpdated({
+  emitConsultationUpdated(salonId, {
     stored: saved.stored,
     clientKey: key,
     record: saved.record,

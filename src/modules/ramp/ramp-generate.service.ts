@@ -94,7 +94,7 @@ async function uploadPngBuffer(buffer: Buffer): Promise<string> {
 async function markGenerationError(id: string) {
   try {
     const post = await rampService.update(id, { genState: "error" });
-    emitRampPostUpdated({ post });
+    emitRampPostUpdated(String(post.salonId || "default"), { post });
   } catch (err) {
     console.error("[ramp-generate] failed to mark error", id, err);
   }
@@ -143,7 +143,7 @@ async function runGenerationJob(id: string) {
     const buffer = Buffer.from(b64, "base64");
     const url = await uploadPngBuffer(buffer);
     const updated = await rampService.addGeneratedImage(id, url);
-    if (updated) emitRampPostUpdated({ post: updated });
+    if (updated) emitRampPostUpdated(String(updated.salonId || "default"), { post: updated });
   } catch (err) {
     console.error("[ramp-generate] upload failed", id, err);
     await markGenerationError(id);

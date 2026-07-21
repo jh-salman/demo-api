@@ -222,7 +222,7 @@ export const appointmentsController = {
         source: "Calendar",
       });
     }
-    emitAppointmentCreated({ appointment });
+    emitAppointmentCreated(salonId, { appointment });
     triggerGhostNotesBrief({
       salonId,
       appointmentId: appointment.id,
@@ -282,7 +282,7 @@ export const appointmentsController = {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    emitAppointmentUpdated({ appointment });
+    emitAppointmentUpdated(salonId, { appointment });
     res.json({ appointment });
   }),
 
@@ -415,7 +415,7 @@ export const appointmentsController = {
       return;
     }
 
-    emitAppointmentDeleted({ id });
+    emitAppointmentDeleted(salonId, { id });
     res.json({
       ok: true,
       appointmentId: id,
@@ -449,7 +449,7 @@ export const appointmentsController = {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    emitAppointmentDeleted({ id });
+    emitAppointmentDeleted(salonId, { id });
     res.status(204).end();
   }),
 };

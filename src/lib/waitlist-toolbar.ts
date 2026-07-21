@@ -49,7 +49,7 @@ export async function pushWaitlistEntryToToolbar(
     salonId,
   );
 
-  emitCalendarToolbarUpdated({
+  emitCalendarToolbarUpdated(salonId, {
     stored: next.stored,
     parkedFromDrag: next.parkedFromDrag,
     toolbarEvents: next.toolbarEvents,

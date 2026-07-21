@@ -33,7 +33,7 @@ export async function ensureDefaultClientCatalog(
   });
 
   const updated = await prisma.salonxClientCatalog.findUnique({ where: { id } });
-  emitClientsCatalogUpdated({
+  emitClientsCatalogUpdated(id, {
     stored: true,
     clients,
     updatedAt: updated?.updatedAt.toISOString(),
@@ -82,7 +82,7 @@ export async function ensureDefaultServiceCatalog(
   });
 
   const updated = await prisma.salonxServiceCatalog.findUnique({ where: { id } });
-  emitServiceCatalogUpdated({
+  emitServiceCatalogUpdated(id, {
     stored: true,
     serviceCatalog: DEFAULT_SERVICES,
     updatedAt: updated?.updatedAt.toISOString(),
@@ -109,7 +109,7 @@ export async function ensureDefaultProductCatalog(
   });
 
   const updated = await prisma.salonxProductCatalog.findUnique({ where: { id } });
-  emitProductCatalogUpdated({
+  emitProductCatalogUpdated(id, {
     stored: true,
     products: DEFAULT_PRODUCTS,
     updatedAt: updated?.updatedAt.toISOString(),

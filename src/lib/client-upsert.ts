@@ -60,7 +60,7 @@ export async function upsertClientByPhone(
       salonId,
     );
 
-    emitClientsCatalogUpdated({
+    emitClientsCatalogUpdated(salonId, {
       stored: true,
       clients: saved.clients,
       ...(saved.updatedAt ? { updatedAt: saved.updatedAt } : {}),

@@ -9,7 +9,7 @@ import {
   getIoRedis,
   ioRedisEnabled,
 } from "./lib/ioredis.js";
-import { setIo } from "./realtime/io.js";
+import { setIo, salonRoom } from "./realtime/io.js";
 import { startGhostNotesWorker } from "./modules/ghost-notes/ghost-notes.worker.js";
 import { ghostNotesQueueEnabled } from "./modules/ghost-notes/ghost-notes.queue.js";
 
@@ -41,6 +41,18 @@ io.on("connection", (socket) => {
     socket.leave("room:config:web");
     if (payload?.forWeb) socket.join("room:config:web");
     else socket.join("room:config:admin");
+  });
+
+  /** Join salon-scoped room so park/waitlist/appointments fan out to all staff devices. */
+  socket.on("subscribe:salon", (payload: { salonId?: string } = {}) => {
+    for (const room of socket.rooms) {
+      if (room.startsWith("salon:")) socket.leave(room);
+    }
+    const id =
+      typeof payload.salonId === "string" && payload.salonId.trim()
+        ? payload.salonId.trim()
+        : "default";
+    socket.join(salonRoom(id));
   });
 });
 

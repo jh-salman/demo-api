@@ -314,7 +314,7 @@ export const micrositeController = {
       });
 
       // Calendar DTO shape for realtime consumers
-      emitAppointmentCreated({
+      emitAppointmentCreated(salon.id, {
         appointment: {
           id: appointment.id,
           clientName: appointment.clientName,

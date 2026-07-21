@@ -38,7 +38,7 @@ export const productCatalogController = {
         salonId,
       );
       await productCache.invalidate(salonId);
-      emitProductCatalogUpdated(next);
+      emitProductCatalogUpdated(salonId, next);
       res.json(next);
     } catch (e) {
       if (e instanceof JsonRowConflictError) {

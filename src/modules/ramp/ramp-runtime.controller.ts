@@ -97,7 +97,7 @@ export const rampRuntimeController = {
         ...(input as RampPostInput),
         salonId: salonIdOf(req),
       });
-      emitRampPostUpdated({ post });
+      emitRampPostUpdated(salonIdOf(req), { post });
       res.status(201).json({ post });
     } catch (e) {
       handleDbError(e);
@@ -109,7 +109,7 @@ export const rampRuntimeController = {
     if (!id) throw new HttpError(400, "id is required");
     try {
       const post = await rampService.update(id, readBody(req.body));
-      emitRampPostUpdated({ post });
+      emitRampPostUpdated(String(post.salonId || LEGACY_SALON_ID), { post });
       res.json({ post });
     } catch (e) {
       handleDbError(e);
@@ -121,7 +121,7 @@ export const rampRuntimeController = {
     if (!id) throw new HttpError(400, "id is required");
     try {
       await rampService.remove(id);
-      emitRampPostUpdated({ post: { id, status: "dismissed" } });
+      emitRampPostUpdated(LEGACY_SALON_ID, { post: { id, status: "dismissed" } });
       res.json({ ok: true });
     } catch (e) {
       handleDbError(e);
@@ -169,7 +169,7 @@ export const rampRuntimeController = {
         genState: "generating",
         status: "building",
       });
-      emitRampPostUpdated({ post });
+      emitRampPostUpdated(String(post.salonId || LEGACY_SALON_ID), { post });
       res.status(202).json({ post });
 
       rampGenerateService.runInBackground(id);

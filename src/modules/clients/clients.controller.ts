@@ -35,7 +35,7 @@ export const clientsController = {
         salonId,
       );
       await invalidateClientsCache(salonId);
-      emitClientsCatalogUpdated(next);
+      emitClientsCatalogUpdated(salonId, next);
       res.json(next);
     } catch (e) {
       if (e instanceof JsonRowConflictError) {
