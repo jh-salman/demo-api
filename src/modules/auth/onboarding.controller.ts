@@ -15,6 +15,8 @@ import { invalidateSalonCache } from "../../lib/tenant.js";
 
 async function createOrgAndSalon(opts: {
   headers: Headers;
+  userId: string;
+  userName?: string | null;
   userPhone?: string | null;
   name: string;
   slug: string;
@@ -61,6 +63,16 @@ async function createOrgAndSalon(opts: {
   await invalidateSalonCache(salon.organizationId);
 
   await seedSalonCatalogs(salon.id);
+
+  // Solo owner: real staff row linked to login (no mock DEFAULT_STAFF roster).
+  await ensureStaffCatalogForMember({
+    salonId: salon.id,
+    userId: opts.userId,
+    name:
+      (opts.userName && opts.userName.trim()) ||
+      opts.name.trim() ||
+      "Owner",
+  });
 
   await auth.api.setActiveOrganization({
     body: { organizationId: org.id },
@@ -123,6 +135,8 @@ export async function postOnboard(
     try {
       const { org, salon } = await createOrgAndSalon({
         headers: fromNodeHeaders(req.headers),
+        userId: session.user.id,
+        userName: session.user.name,
         userPhone: session.user.phoneNumber,
         name,
         slug,
@@ -185,6 +199,8 @@ export async function postCreateOrganization(
     try {
       const { org, salon } = await createOrgAndSalon({
         headers: fromNodeHeaders(req.headers),
+        userId: session.user.id,
+        userName: session.user.name,
         userPhone: session.user.phoneNumber,
         name,
         slug,
@@ -302,6 +318,21 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
     }
     const activeSalon =
       salons.find((s) => s.organizationId === activeOrgId) || null;
+
+    // Best-effort: link login user to a staff catalog row (owner on solo onboard,
+    // invited stylists on accept-invite — covers legacy orgs missing userId).
+    if (activeSalon?.id && session.user.id) {
+      const displayName =
+        (typeof session.user.name === "string" && session.user.name.trim()) ||
+        (typeof session.user.phoneNumber === "string" &&
+          session.user.phoneNumber) ||
+        "Stylist";
+      await ensureStaffCatalogForMember({
+        salonId: activeSalon.id,
+        userId: session.user.id,
+        name: displayName,
+      });
+    }
 
     res.json({
       user: session.user,

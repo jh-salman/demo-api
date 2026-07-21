@@ -17,6 +17,7 @@ import {
   type MicrositeTheme,
 } from "./microsite.theme.js";
 import { upsertClientByPhone } from "../../lib/client-upsert.js";
+import { triggerGhostNotesBrief } from "../../lib/ghost-notes-trigger.js";
 import { effectiveStaffWindows } from "../../lib/staff-schedule.js";
 import { invalidateSalonCache } from "../../lib/tenant.js";
 import {
@@ -545,6 +546,15 @@ export const micrositeService = {
         /* booking must not fail */
       }
     }
+
+    triggerGhostNotesBrief({
+      salonId: input.salon.id,
+      appointmentId: row.id,
+      clientName: input.clientName.trim(),
+      clientPhone: input.clientPhone.trim(),
+      service: serviceName,
+      staffId,
+    });
 
     return {
       id: row.id,

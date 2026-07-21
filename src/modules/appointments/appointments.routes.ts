@@ -13,6 +13,7 @@ appointmentsRouter.get(
 );
 appointmentsRouter.get("/:id", appointmentsController.getById);
 appointmentsRouter.patch("/:id", appointmentsController.patch);
+appointmentsRouter.post("/:id/complete", appointmentsController.complete);
 appointmentsRouter.delete("/:id", appointmentsController.remove);
 appointmentsRouter.get("/:id/messages", appointmentsController.listMessages);
 appointmentsRouter.post("/:id/messages", appointmentsController.sendMessage);

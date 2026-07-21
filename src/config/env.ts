@@ -21,6 +21,20 @@ export const env = {
   REDIS_URL: process.env.REDIS_URL?.trim() ?? "",
   /** OpenAI — optional; RAMP AI routes when set. */
   OPENAI_API_KEY: process.env.OPENAI_API_KEY?.trim() ?? "",
+  /** Engine 01 Ghost Notes — async pre-consultation briefs (default on). */
+  GHOST_NOTES_ENABLED: (process.env.GHOST_NOTES_ENABLED ?? "1") !== "0",
+  /** Start BullMQ worker inside API process (dev convenience; default on in development). */
+  GHOST_NOTES_INLINE_WORKER:
+    process.env.GHOST_NOTES_INLINE_WORKER === "1" ||
+    (process.env.GHOST_NOTES_INLINE_WORKER !== "0" &&
+      (process.env.NODE_ENV ?? "development") === "development"),
+  /** OpenAI model for returning-client briefs. */
+  GHOST_NOTES_MODEL: process.env.GHOST_NOTES_MODEL?.trim() || "gpt-4o-mini",
+  /** BullMQ worker concurrency when REDIS_URL is set. */
+  GHOST_NOTES_WORKER_CONCURRENCY: (() => {
+    const n = Number(process.env.GHOST_NOTES_WORKER_CONCURRENCY);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 5;
+  })(),
   /** GET /api/clients cache TTL in seconds (default 60). */
   CLIENTS_CACHE_TTL_SECONDS: (() => {
     const n = Number(process.env.CLIENTS_CACHE_TTL_SECONDS);

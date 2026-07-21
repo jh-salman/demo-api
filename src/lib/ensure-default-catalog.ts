@@ -52,7 +52,9 @@ export async function ensureDefaultStaffCatalog(
   const items = row?.items;
   if (row && !catalogEmpty(items)) return false;
 
-  const payload = [...DEFAULT_STAFF] as Prisma.InputJsonValue;
+  // Org salons start empty — owner/stylists are linked via ensureStaffCatalogForMember.
+  const useMocks = id === LEGACY_SALON_ID;
+  const payload = (useMocks ? [...DEFAULT_STAFF] : []) as Prisma.InputJsonValue;
   await prisma.salonxStaffCatalog.upsert({
     where: { id },
     create: { id, items: payload },

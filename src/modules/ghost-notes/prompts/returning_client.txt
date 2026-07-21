@@ -1,0 +1,47 @@
+Client: {first_name} {last_name}
+Services booked today: {services_booked}
+Allergy flags: {allergy_flags}
+Lifestyle notes: {lifestyle_notes}
+
+Prior consultation history (last 5 sessions):
+{prior_sessions_json}
+
+Generate a pre-consultation brief for the stylist. Return ONLY valid JSON in this exact format:
+
+{
+  "brief": "A 2-3 sentence warm, specific summary of this client. Reference real details from their history. Mention something personal if it's in the lifestyle notes — how their sister's wedding went, how their kids are doing, anything that shows genuine memory.",
+  "plants": [
+    {
+      "id": "plant_1",
+      "text": "A natural conversation seed — something the stylist will notice and mention organically. Not a question. Not a task. A human moment waiting to happen. Example: 'Her highlights were looking a little brassy at the ends last visit — she might appreciate you noticing that first.'",
+      "type": "curiosity"
+    },
+    {
+      "id": "plant_2",
+      "text": "A second conversation seed if relevant from the history.",
+      "type": "curiosity"
+    }
+  ],
+  "back_bar": [
+    {
+      "product_name": "Product name based on services booked and prior usage history",
+      "brand": "Brand if known from history",
+      "qty": 1,
+      "default": false
+    }
+  ],
+  "retail_suggestions": [
+    {
+      "product": "Product name",
+      "reason": "Why this client specifically would benefit — based on their history",
+      "price": null
+    }
+  ]
+}
+
+Rules:
+- The brief must be specific to THIS client. No generic language.
+- Plants are ambient curiosity seeds — not questions, not tasks, not scripts. They are moments waiting to happen.
+- If allergy flags exist — always include them prominently in the brief. Never omit.
+- Back bar should reflect what has actually worked for this client based on history.
+- Return valid JSON only. No markdown. No backticks. No preamble.

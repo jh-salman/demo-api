@@ -7,6 +7,7 @@ import type { AuthedRequest } from "../../middleware/auth.middleware.js";
 import { LEGACY_SALON_ID } from "../../lib/tenant.js";
 import { micrositeService } from "../microsite/microsite.service.js";
 import { waitlistService, type WaitlistStatus } from "./waitlist.service.js";
+import { pushWaitlistEntryToToolbar } from "../../lib/waitlist-toolbar.js";
 
 function salonIdOf(req: AuthedRequest) {
   return req.salonId || LEGACY_SALON_ID;
@@ -48,6 +49,11 @@ export const waitlistController = {
           : null,
       notes: typeof body.notes === "string" ? body.notes : "",
     });
+    try {
+      await pushWaitlistEntryToToolbar(salon.id, entry);
+    } catch {
+      /* waitlist row saved — toolbar sync is best-effort */
+    }
     res.status(201).json({ entry });
   }),
 

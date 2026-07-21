@@ -10,6 +10,8 @@ import {
   ioRedisEnabled,
 } from "./lib/ioredis.js";
 import { setIo } from "./realtime/io.js";
+import { startGhostNotesWorker } from "./modules/ghost-notes/ghost-notes.worker.js";
+import { ghostNotesQueueEnabled } from "./modules/ghost-notes/ghost-notes.queue.js";
 
 const app = createApp();
 const httpServer = createServer(app);
@@ -57,4 +59,17 @@ httpServer.listen(env.PORT, () => {
       ? "[demo-api] Socket.IO Redis adapter: ON (multi-instance realtime)"
       : "[demo-api] Socket.IO Redis adapter: OFF (set REDIS_URL for scaling)",
   );
+  if (env.GHOST_NOTES_ENABLED) {
+    if (ghostNotesQueueEnabled() && env.GHOST_NOTES_INLINE_WORKER) {
+      startGhostNotesWorker();
+    } else if (ghostNotesQueueEnabled()) {
+      console.log(
+        "[ghost-notes] Queue ON — run `npm run worker:ghost-notes` for BullMQ worker",
+      );
+    } else {
+      console.log("[ghost-notes] Inline mode (no REDIS_URL — briefs run in-process)");
+    }
+  } else {
+    console.log("[ghost-notes] Disabled (GHOST_NOTES_ENABLED=0)");
+  }
 });

@@ -9,12 +9,23 @@ import {
   emitAppointmentDeleted,
   emitAppointmentUpdated,
 } from "../../realtime/io.js";
+import { triggerGhostNotesBrief } from "../../lib/ghost-notes-trigger.js";
+import { archiveVisitToConsultation } from "../../lib/visit-complete.js";
 import { upsertClientByPhone } from "../../lib/client-upsert.js";
 import {
   listClientMessages,
   sendClientMessage,
 } from "../../lib/client-message.js";
 import { appointmentsService } from "./appointments.service.js";
+import { normalizeClientKey } from "../client-consultation/client-consultation.service.js";
+import {
+  assertCanMutateAppointment,
+  assertCanReadAppointment,
+  assertPatchStaffId,
+  filterAppointmentsForViewer,
+  requireViewerContext,
+  resolveCreateStaffId,
+} from "../../lib/appointment-auth.js";
 
 function salonIdOf(req: AuthedRequest) {
   return req.salonId || LEGACY_SALON_ID;
@@ -168,6 +179,7 @@ function parsePatchBody(body: Request["body"]): {
 
 export const appointmentsController = {
   list: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const ctx = await requireViewerContext(req);
     const range = parseRange(
       typeof req.query.from === "string" ? req.query.from : undefined,
       typeof req.query.to === "string" ? req.query.to : undefined,
@@ -186,11 +198,15 @@ export const appointmentsController = {
       res.status(u.status).json(u.body);
       return;
     }
-    res.json({ appointments: list });
+    res.json({
+      appointments: filterAppointmentsForViewer(list, ctx),
+    });
   }),
 
   create: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const ctx = await requireViewerContext(req);
     const input = parseCreateBody(req.body);
+    input.staffId = resolveCreateStaffId(input.staffId, ctx);
     const salonId = salonIdOf(req);
     const appointment = await appointmentsService.create(input, salonId);
     if (appointment === null) {
@@ -207,10 +223,19 @@ export const appointmentsController = {
       });
     }
     emitAppointmentCreated({ appointment });
+    triggerGhostNotesBrief({
+      salonId,
+      appointmentId: appointment.id,
+      clientName: input.clientName,
+      clientPhone: input.clientPhone,
+      service: input.service,
+      staffId: input.staffId,
+    });
     res.status(201).json({ appointment });
   }),
 
   getById: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const ctx = await requireViewerContext(req);
     const id = req.params.id as string;
     const apt = await appointmentsService.getById(id, salonIdOf(req));
     if (apt === undefined) {
@@ -222,16 +247,31 @@ export const appointmentsController = {
       res.status(404).json({ error: "Not found" });
       return;
     }
+    assertCanReadAppointment(apt, ctx);
     res.json({ appointment: apt });
   }),
 
   patch: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const ctx = await requireViewerContext(req);
     const id = req.params.id as string;
+    const salonId = salonIdOf(req);
+    const existing = await appointmentsService.getById(id, salonId);
+    if (existing === undefined) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    if (existing === null) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    assertCanMutateAppointment(existing, ctx);
     const data = parsePatchBody(req.body);
+    assertPatchStaffId(data.staffId, ctx);
     const appointment = await appointmentsService.update(
       id,
       data,
-      salonIdOf(req),
+      salonId,
     );
     if (appointment === null) {
       const u = prismaUnavailableResponse();
@@ -248,10 +288,14 @@ export const appointmentsController = {
 
   pendingReferenceReviews: asyncHandler(
     async (req: AuthedRequest, res: Response) => {
-      const staffId =
+      const ctx = await requireViewerContext(req);
+      let staffId =
         typeof req.query.staffId === "string" && req.query.staffId.trim()
           ? req.query.staffId.trim()
           : null;
+      if (!ctx.ownerAdmin) {
+        staffId = ctx.viewerStaffId;
+      }
       const list = await appointmentsService.pendingReferenceReviews(
         salonIdOf(req),
         staffId,
@@ -266,17 +310,7 @@ export const appointmentsController = {
   ),
 
   listMessages: asyncHandler(async (req: AuthedRequest, res: Response) => {
-    const appointmentId = req.params.id as string;
-    const list = await listClientMessages(salonIdOf(req), appointmentId);
-    if (list === null) {
-      const u = prismaUnavailableResponse();
-      res.status(u.status).json(u.body);
-      return;
-    }
-    res.json({ messages: list });
-  }),
-
-  sendMessage: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const ctx = await requireViewerContext(req);
     const appointmentId = req.params.id as string;
     const salonId = salonIdOf(req);
     const apt = await appointmentsService.getById(appointmentId, salonId);
@@ -289,6 +323,31 @@ export const appointmentsController = {
       res.status(404).json({ error: "Not found" });
       return;
     }
+    assertCanReadAppointment(apt, ctx);
+    const list = await listClientMessages(salonId, appointmentId);
+    if (list === null) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    res.json({ messages: list });
+  }),
+
+  sendMessage: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const ctx = await requireViewerContext(req);
+    const appointmentId = req.params.id as string;
+    const salonId = salonIdOf(req);
+    const apt = await appointmentsService.getById(appointmentId, salonId);
+    if (apt === undefined) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    if (apt === null) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    assertCanMutateAppointment(apt, ctx);
     const body =
       req.body && typeof req.body === "object"
         ? (req.body as Record<string, unknown>)
@@ -319,9 +378,68 @@ export const appointmentsController = {
     res.status(201).json({ message });
   }),
 
-  remove: asyncHandler(async (req: AuthedRequest, res: Response) => {
+  /** Cash checkout — archive consultation visit + remove appointment from calendar. */
+  complete: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const ctx = await requireViewerContext(req);
     const id = req.params.id as string;
-    const ok = await appointmentsService.delete(id, salonIdOf(req));
+    const salonId = salonIdOf(req);
+    const existing = await appointmentsService.getById(id, salonId);
+    if (existing === undefined) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    if (existing === null) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    assertCanMutateAppointment(existing, ctx);
+
+    const consultation = await archiveVisitToConsultation(salonId, {
+      id: existing.id,
+      clientName: existing.clientName,
+      service: existing.service,
+      notes: existing.notes,
+      start: existing.start,
+      end: existing.end,
+    });
+
+    const ok = await appointmentsService.delete(id, salonId);
+    if (ok === null) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    if (!ok) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    emitAppointmentDeleted({ id });
+    res.json({
+      ok: true,
+      appointmentId: id,
+      clientKey: consultation?.clientKey ?? normalizeClientKey(existing.clientName),
+      consultation: consultation?.record ?? null,
+    });
+  }),
+
+  remove: asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const ctx = await requireViewerContext(req);
+    const id = req.params.id as string;
+    const salonId = salonIdOf(req);
+    const existing = await appointmentsService.getById(id, salonId);
+    if (existing === undefined) {
+      const u = prismaUnavailableResponse();
+      res.status(u.status).json(u.body);
+      return;
+    }
+    if (existing === null) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    assertCanMutateAppointment(existing, ctx);
+    const ok = await appointmentsService.delete(id, salonId);
     if (ok === null) {
       const u = prismaUnavailableResponse();
       res.status(u.status).json(u.body);
