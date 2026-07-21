@@ -230,6 +230,7 @@ export const appointmentsController = {
       clientPhone: input.clientPhone,
       service: input.service,
       staffId: input.staffId,
+      appointmentNotes: input.notes,
     });
     res.status(201).json({ appointment });
   }),

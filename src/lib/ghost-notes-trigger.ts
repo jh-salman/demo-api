@@ -10,6 +10,7 @@ export type GhostNotesTriggerInput = {
   clientPhone?: string | null;
   service?: string;
   staffId?: string | null;
+  appointmentNotes?: string | null;
 };
 
 /** Fire-and-forget brief generation when an appointment is booked. */
@@ -29,6 +30,7 @@ export function triggerGhostNotesBrief(input: GhostNotesTriggerInput): void {
     appointmentId: input.appointmentId,
     services,
     staffId: input.staffId ?? null,
+    appointmentNotes: input.appointmentNotes?.trim() || null,
   };
 
   void enqueueGhostNotesBrief(job).catch((err) => {

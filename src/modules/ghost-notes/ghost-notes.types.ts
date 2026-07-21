@@ -38,6 +38,7 @@ export type GhostNotesJobData = {
   appointmentId: string;
   services: string[];
   staffId?: string | null;
+  appointmentNotes?: string | null;
 };
 
 export type BriefGenerationResult = {

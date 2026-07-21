@@ -23,6 +23,8 @@ export async function processGhostNotesJob(job: GhostNotesJobData): Promise<void
       priorSessions: ctx.priorSessions,
       allergyFlags: ctx.allergyFlags,
       lifestyleNotes: ctx.lifestyleNotes,
+      appointmentNotes: job.appointmentNotes ?? null,
+      hasReferencePhoto: ctx.hasReferencePhoto,
     });
 
     await writeGhostBrief(job, {

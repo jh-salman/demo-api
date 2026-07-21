@@ -554,6 +554,7 @@ export const micrositeService = {
       clientPhone: input.clientPhone.trim(),
       service: serviceName,
       staffId,
+      appointmentNotes: row.notes,
     });
 
     return {

@@ -2,7 +2,16 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import OpenAI from "openai";
 import { env } from "../../config/env.js";
-import type { BriefGenerationResult } from "./ghost-notes.types.js";
+import type { BriefGenerationResult, GhostPlant } from "./ghost-notes.types.js";
+
+export type ColdStartInput = {
+  clientName: string;
+  services: string[];
+  appointmentNotes?: string | null;
+  allergyFlags?: string[];
+  lifestyleNotes?: unknown;
+  hasReferencePhoto?: boolean;
+};
 
 function loadReturningClientPrompt(): string {
   const candidates = [
@@ -38,17 +47,70 @@ function defaultBackBar(services: string[]) {
       ];
 }
 
-export function generateColdStartBrief(services: string[]): BriefGenerationResult {
+function firstNameOf(clientName: string) {
+  return clientName.trim().split(/\s+/)[0] || "Client";
+}
+
+/** Factual first-visit brief — only uses data on file, no invented history. */
+function buildFirstVisitBriefText(input: ColdStartInput): string {
+  const firstName = firstNameOf(input.clientName);
+  const serviceStr = input.services.filter(Boolean).join(", ") || "General service";
+  const lines: string[] = [`${firstName} — first visit, booked for ${serviceStr}.`];
+
+  const notes = input.appointmentNotes?.trim();
+  if (notes) {
+    lines.push(`Booking note: ${notes.slice(0, 240)}`);
+  }
+  if (input.hasReferencePhoto) {
+    lines.push("Client shared a reference image — review in LOOK before you begin.");
+  }
+  const allergies = (input.allergyFlags || []).filter(Boolean);
+  if (allergies.length) {
+    lines.push(`Allergy flags on file: ${allergies.join(", ")}.`);
+  }
+  const lifestyle = input.lifestyleNotes;
+  if (lifestyle && typeof lifestyle === "object" && !Array.isArray(lifestyle)) {
+    const keys = Object.keys(lifestyle as Record<string, unknown>);
+    if (keys.length) {
+      lines.push(
+        `Lifestyle notes: ${JSON.stringify(lifestyle).slice(0, 160)}`,
+      );
+    }
+  }
+
+  return lines.join(" ");
+}
+
+function buildFirstVisitPlants(input: ColdStartInput): GhostPlant[] {
+  const plants: GhostPlant[] = [
+    {
+      id: "cold_start_1",
+      text: "First visit. Ask what brought them in today.",
+      type: "curiosity",
+    },
+  ];
+  const notes = input.appointmentNotes?.trim();
+  if (notes) {
+    plants.push({
+      id: "cold_start_2",
+      text: `On file from booking: ${notes.slice(0, 120)}`,
+      type: "context",
+    });
+  } else if (input.hasReferencePhoto) {
+    plants.push({
+      id: "cold_start_2",
+      text: "Reference photo on file — review in LOOK before you start.",
+      type: "look",
+    });
+  }
+  return plants;
+}
+
+export function generateColdStartBrief(input: ColdStartInput): BriefGenerationResult {
   return {
-    brief: null,
-    plants: [
-      {
-        id: "cold_start_1",
-        text: "First visit. Ask what brought them in today.",
-        type: "curiosity",
-      },
-    ],
-    back_bar: defaultBackBar(services),
+    brief: buildFirstVisitBriefText(input),
+    plants: buildFirstVisitPlants(input),
+    back_bar: defaultBackBar(input.services),
     retail_suggestions: [],
   };
 }
@@ -141,9 +203,18 @@ export async function generateBrief(input: {
   priorSessions: unknown[];
   allergyFlags?: string[];
   lifestyleNotes?: unknown;
+  appointmentNotes?: string | null;
+  hasReferencePhoto?: boolean;
 }): Promise<BriefGenerationResult> {
   if (input.isNewClient || input.priorSessions.length === 0) {
-    return generateColdStartBrief(input.services);
+    return generateColdStartBrief({
+      clientName: input.clientName,
+      services: input.services,
+      appointmentNotes: input.appointmentNotes,
+      allergyFlags: input.allergyFlags,
+      lifestyleNotes: input.lifestyleNotes,
+      hasReferencePhoto: input.hasReferencePhoto,
+    });
   }
   return generateReturningClientBrief(input);
 }

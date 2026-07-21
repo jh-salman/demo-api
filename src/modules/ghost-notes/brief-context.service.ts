@@ -62,6 +62,13 @@ export async function loadBriefContext(
     ? allergyRaw.filter((x): x is string => typeof x === "string")
     : [];
 
+  const photos = Array.isArray(record.photos) ? record.photos : [];
+  const hasReferencePhoto = photos.some((p) => {
+    if (!p || typeof p !== "object") return false;
+    const url = (p as { url?: unknown }).url;
+    return typeof url === "string" && url.trim().length > 0;
+  });
+
   return {
     clientKey: key,
     record,
@@ -69,6 +76,7 @@ export async function loadBriefContext(
     isNewClient,
     allergyFlags,
     lifestyleNotes: record.lifestyle_notes ?? record.lifestyleNotes ?? {},
+    hasReferencePhoto,
     updatedAt: row.updatedAt ?? null,
   };
 }
