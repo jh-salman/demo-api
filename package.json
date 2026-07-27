@@ -14,7 +14,9 @@
     "db:migrate": "prisma migrate dev",
     "db:reconcile-migrations": "tsx scripts/reconcile-prisma-migrations.ts",
     "db:studio": "prisma studio",
-    "db:seed-catalog": "tsx scripts/seed-catalog.ts"
+    "db:seed-catalog": "tsx scripts/seed-catalog.ts",
+    "db:backup": "tsx scripts/db-backup.ts",
+    "db:restore": "tsx scripts/db-restore.ts"
   },
   "keywords": [],
   "author": "",
@@ -38,6 +40,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1093.0",
     "@types/express": "^5.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.10.0",
