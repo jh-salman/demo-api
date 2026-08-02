@@ -1,0 +1,98 @@
+# Hostinger VPS — host Nginx load-balances api + api-2; Postgres/Redis shared.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-salonx_demo}
+      POSTGRES_USER: ${POSTGRES_USER:-salonx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-salonx} -d ${POSTGRES_DB:-salonx_demo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      GHOST_NOTES_INLINE_WORKER: "0"
+    ports:
+      - "127.0.0.1:4000:4000"
+    volumes:
+      - uploads:/app/public/uploads
+      - appdata:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Second API replica — Nginx upstream load balances :4000 + :4001
+  api-2:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      GHOST_NOTES_INLINE_WORKER: "0"
+    ports:
+      - "127.0.0.1:4001:4000"
+    volumes:
+      - uploads:/app/public/uploads
+      - appdata:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["node", "dist/workers/ghost-notes.entry.js"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      GHOST_NOTES_ENABLED: ${GHOST_NOTES_ENABLED:-1}
+      GHOST_NOTES_INLINE_WORKER: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:
+  appdata:
