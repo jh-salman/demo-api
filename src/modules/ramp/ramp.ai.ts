@@ -4,9 +4,19 @@ import OpenAI from "openai";
 import { toFile } from "openai";
 import type { Uploadable } from "openai/uploads";
 
-export const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+/** Lazy client — do not construct at import time (OPENAI_API_KEY may be unset). */
+let _client: OpenAI | null = null;
+
+export function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+  if (!_client) {
+    _client = new OpenAI({ apiKey });
+  }
+  return _client;
+}
 
 /** OpenAI state-of-the-art image model (Apr 2026). */
 export const RAMP_IMAGE_MODEL = "gpt-image-2";
@@ -45,7 +55,7 @@ export async function generateImageBase64(
   prompt: string,
   options?: ImageGenOptions,
 ): Promise<string | undefined> {
-  const image = await client.images.generate({
+  const image = await getOpenAIClient().images.generate({
     model: options?.model ?? RAMP_IMAGE_MODEL,
     prompt,
     size: options?.size ?? "1024x1024",
@@ -90,7 +100,7 @@ export async function editImageFromReferenceBase64(
   options?: ReferenceImageOptions,
 ): Promise<string | undefined> {
   const filename = options?.filename ?? "source.png";
-  const image = await client.images.edit({
+  const image = await getOpenAIClient().images.edit({
     model: options?.model ?? RAMP_IMAGE_MODEL,
     image: await toUploadableSource(sourceImage, filename, options?.mimeType),
     prompt,
